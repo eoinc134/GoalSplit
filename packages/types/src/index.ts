@@ -1,17 +1,34 @@
 export type GoalStatus = "active" | "completed" | "failed" | "paused";
 
-export type GoalType = "distance" | "time" | "pace" | "frequency";
+export type GoalType = "distance" | "time" | "pace" | "frequency" | "completion";
+
+export type GoalCategory =
+  | "running"
+  | "triathlon"
+  | "ultra"
+  | "adventure"
+  | "fitness";
+
+export const GOAL_CATEGORY_META: Record<GoalCategory, { label: string; icon: string }> = {
+  running:   { label: "Running",                icon: "🏃" },
+  triathlon: { label: "Triathlon & Multi-Sport", icon: "🏊" },
+  ultra:     { label: "Ultra Endurance",         icon: "⛰️" },
+  adventure: { label: "Adventure",               icon: "🧗" },
+  fitness:   { label: "Fitness",                 icon: "💪" },
+};
 
 export interface Goal {
   id: string;
   name: string;
   description?: string;
+  category: GoalCategory;
   type: GoalType;
   targetValue: number;
   currentValue: number;
   unit: string;
-  targetDate: string; // ISO date string
+  targetDate?: string; // ISO date string
   status: GoalStatus;
+  prioritized?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,7 +50,10 @@ export interface PersonalBest {
   id: string;
   distance: number; // kilometres (e.g. 5, 10, 21.0975, 42.195)
   distanceLabel: string; // e.g. "5K", "10K", "Half Marathon", "Marathon"
-  time: number; // seconds
+  time: number; // current PB in seconds
+  pace: number; // seconds per km
+  goalTime?: number; // target time in seconds
+  goalPace?: number; // target pace in seconds per km
   date: string; // ISO date string
   runId?: string;
   notes?: string;
@@ -57,7 +77,6 @@ export interface DashboardStats {
   personalBests: PersonalBest[];
 }
 
-// API response wrapper
 export interface ApiResponse<T> {
   data: T;
   message?: string;
@@ -68,7 +87,6 @@ export interface ApiError {
   statusCode: number;
 }
 
-// Pagination
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
