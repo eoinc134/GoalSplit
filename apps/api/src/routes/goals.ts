@@ -44,7 +44,7 @@ const SEED: Goal[] = [
   { id: "g-bench",        name: "Bench Press Bodyweight",       category: "fitness", type: "completion", targetValue: 1,    currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
 ];
 
-let goals: Goal[] = [...SEED];
+export let goals: Goal[] = [...SEED];
 
 goalsRouter.get("/", (_req, res) => {
   res.json({ data: goals });

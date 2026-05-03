@@ -4,12 +4,31 @@ import { PbsTable } from "@/components/pbs-table";
 import { StravaConnect } from "@/components/strava-connect";
 import { ActivityList } from "@/components/activity-list";
 
+interface Stats {
+  totalRuns: number;
+  totalDistance: number;
+  weeklyDistance: number;
+  activeGoals: number;
+  prioritizedGoals: number;
+}
+
+async function fetchStats(): Promise<Stats> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+  try {
+    const res = await fetch(`${apiUrl}/dashboard/stats`, { next: { revalidate: 0 } });
+    const { data } = await res.json();
+    return data as Stats;
+  } catch {
+    return { totalRuns: 0, totalDistance: 0, weeklyDistance: 0, activeGoals: 0, prioritizedGoals: 0 };
+  }
+}
+
 interface DashboardPageProps {
   searchParams: Promise<{ strava?: string }>;
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const { strava } = await searchParams;
+  const [{ strava }, stats] = await Promise.all([searchParams, fetchStats()]);
 
   return (
     <div className="space-y-8">
@@ -32,10 +51,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Total Runs" value="0" />
-        <StatCard label="Total Distance" value="0 km" />
-        <StatCard label="This Week" value="0 km" />
-        <StatCard label="Active Goals" value="0" />
+        <StatCard label="Total Runs" value={String(stats.totalRuns)} />
+        <StatCard label="Total Distance" value={`${stats.totalDistance} km`} />
+        <StatCard label="This Week" value={`${stats.weeklyDistance} km`} />
+        <StatCard
+          label="Active Goals"
+          value={String(stats.activeGoals)}
+          subtext={stats.prioritizedGoals > 0 ? `${stats.prioritizedGoals} in focus` : undefined}
+        />
       </div>
 
       {/* Goals + PBs */}
