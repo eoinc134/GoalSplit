@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { initSchema } from "./db/index.js";
 import { router } from "./routes/index.js";
 
 const app = express();
@@ -15,6 +16,13 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`GoalSplit API running on http://localhost:${PORT}`);
-});
+initSchema()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`GoalSplit API running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to initialise database:", err);
+    process.exit(1);
+  });
