@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
@@ -12,6 +12,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+}
+
+export async function serverFetch<T>(path: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 0 } });
+    const json = await res.json();
+    return json.data as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export const api = {

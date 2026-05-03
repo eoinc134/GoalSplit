@@ -3,9 +3,8 @@
 import { useState } from "react";
 import type { Goal, GoalCategory, GoalType, ApiResponse } from "@goalsplit/types";
 import { GOAL_CATEGORY_META } from "@goalsplit/types";
-import { formatTime } from "@/lib/format";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+import { formatTime, toTimeStr, toSeconds } from "@/lib/format";
+import { API_URL as API } from "@/lib/api";
 
 const CATEGORY_ORDER: GoalCategory[] = ["running", "triathlon", "ultra", "adventure", "fitness"];
 
@@ -16,25 +15,6 @@ const GOAL_TYPES: { value: GoalType; label: string }[] = [
   { value: "pace",       label: "Pace" },
   { value: "frequency",  label: "Frequency" },
 ];
-
-// ── Time helpers ─────────────────────────────────────────────────────────────
-
-function toTimeStr(seconds: number): string {
-  if (!seconds) return "";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-function toSeconds(str: string): number {
-  const parts = str.trim().split(":").map(Number);
-  if (parts.some(isNaN)) return 0;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] ?? 0;
-}
 
 // ── Form state ────────────────────────────────────────────────────────────────
 

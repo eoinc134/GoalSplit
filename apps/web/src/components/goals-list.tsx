@@ -1,17 +1,7 @@
-import type { Goal, ApiResponse, GoalCategory } from "@goalsplit/types";
+import type { Goal, GoalCategory } from "@goalsplit/types";
 import { GOAL_CATEGORY_META } from "@goalsplit/types";
 import { formatTime } from "@/lib/format";
-
-async function fetchGoals(): Promise<Goal[]> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
-  try {
-    const res = await fetch(`${apiUrl}/goals`, { next: { revalidate: 0 } });
-    const json: ApiResponse<Goal[]> = await res.json();
-    return json.data;
-  } catch {
-    return [];
-  }
-}
+import { serverFetch } from "@/lib/api";
 
 function GoalRow({ goal }: { goal: Goal }) {
   const isTime = goal.type === "time";
@@ -51,7 +41,7 @@ function GoalRow({ goal }: { goal: Goal }) {
 }
 
 export async function GoalsList() {
-  const goals = await fetchGoals();
+  const goals = await serverFetch<Goal[]>("/goals", []);
 
   const prioritized = goals.filter((g) => g.prioritized && g.status !== "completed");
   const activeByCategory = goals.reduce<Partial<Record<GoalCategory, Goal[]>>>((acc, g) => {

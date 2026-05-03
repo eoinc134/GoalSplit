@@ -1,19 +1,9 @@
-import type { ApiResponse, SyncStatus } from "@goalsplit/types";
-
-async function fetchStatus(): Promise<SyncStatus> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
-  try {
-    const res = await fetch(`${apiUrl}/auth/status`, { next: { revalidate: 0 } });
-    const json: ApiResponse<SyncStatus> = await res.json();
-    return json.data;
-  } catch {
-    return { isConnected: false };
-  }
-}
+import type { SyncStatus } from "@goalsplit/types";
+import { serverFetch, API_URL } from "@/lib/api";
 
 export async function StravaConnect() {
-  const status = await fetchStatus();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+  const status = await serverFetch<SyncStatus>("/auth/status", { isConnected: false });
+  const apiUrl = API_URL;
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">

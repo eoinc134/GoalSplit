@@ -1,55 +1,20 @@
 import { SyncButton } from "./sync-button";
-import { formatTime } from "@/lib/format";
-
-interface ActivityRow {
-  id: string;
-  strava_id: number;
-  name: string;
-  type: string;
-  sport_type: string;
-  distance: number; // metres
-  moving_time: number; // seconds
-  total_elevation_gain: number; // metres
-  average_speed: number; // m/s
-  average_heartrate: number | null;
-  start_date: string;
-  start_date_local: string;
-}
+import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
+import { API_URL } from "@/lib/api";
+import { ACTIVITY_TYPE_ICON } from "@/lib/constants";
+import type { ActivityRow } from "@/lib/types";
 
 async function fetchActivities(): Promise<{ data: ActivityRow[]; total: number }> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
   try {
-    const res = await fetch(`${apiUrl}/activities?limit=10`, { next: { revalidate: 0 } });
+    const res = await fetch(`${API_URL}/activities?limit=10`, { next: { revalidate: 0 } });
     return res.json();
   } catch {
     return { data: [], total: 0 };
   }
 }
 
-const TYPE_ICON: Record<string, string> = {
-  Run: "🏃",
-  Ride: "🚴",
-  Swim: "🏊",
-  Walk: "🚶",
-  Hike: "⛰️",
-};
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-IE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function formatDistance(metres: number): string {
   return (metres / 1000).toFixed(2) + " km";
-}
-
-function formatPaceFromSpeed(speedMs: number): string {
-  if (speedMs === 0) return "—";
-  const secPerKm = Math.round(1000 / speedMs);
-  return formatTime(secPerKm) + "/km";
 }
 
 export async function ActivityList() {
@@ -82,7 +47,7 @@ export async function ActivityList() {
             <li key={act.id} className="flex items-center justify-between gap-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="text-lg" aria-hidden>
-                  {TYPE_ICON[act.type] ?? "🏃"}
+                  {ACTIVITY_TYPE_ICON[act.type] ?? "🏃"}
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{act.name}</p>
@@ -93,7 +58,7 @@ export async function ActivityList() {
                 <span>{formatDistance(act.distance)}</span>
                 <span className="text-neutral-400">{formatTime(act.moving_time)}</span>
                 <span className="hidden text-neutral-500 sm:block">
-                  {formatPaceFromSpeed(act.average_speed)}
+                  {paceFromSpeed(act.average_speed)}
                 </span>
                 {act.average_heartrate && (
                   <span className="hidden text-neutral-500 sm:block">

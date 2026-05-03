@@ -1,61 +1,27 @@
 import { SyncButton } from "@/components/sync-button";
-import { formatTime } from "@/lib/format";
-
-interface ActivityRow {
-  id: string;
-  name: string;
-  type: string;
-  sport_type: string;
-  distance: number;
-  moving_time: number;
-  total_elevation_gain: number;
-  average_speed: number;
-  average_heartrate: number | null;
-  start_date_local: string;
-}
+import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
+import { API_URL } from "@/lib/api";
+import { ACTIVITY_TYPE_ICON, ACTIVITY_FILTERS } from "@/lib/constants";
+import type { ActivityRow } from "@/lib/types";
 
 const PAGE_SIZE = 30;
 
-const FILTERS = [
-  { label: "All",   value: "" },
-  { label: "🏃 Run",  value: "Run" },
-  { label: "🚴 Ride", value: "Ride" },
-  { label: "🏊 Swim", value: "Swim" },
-  { label: "🚶 Walk", value: "Walk" },
-];
-
 async function fetchActivities(type: string, page: number) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
     offset: String(page * PAGE_SIZE),
     ...(type ? { type } : {}),
   });
   try {
-    const res = await fetch(`${apiUrl}/activities?${params}`, { next: { revalidate: 0 } });
+    const res = await fetch(`${API_URL}/activities?${params}`, { next: { revalidate: 0 } });
     return res.json() as Promise<{ data: ActivityRow[]; total: number }>;
   } catch {
     return { data: [], total: 0 };
   }
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IE", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function formatDistance(metres: number) {
   return (metres / 1000).toFixed(2) + " km";
-}
-
-function paceFromSpeed(speedMs: number) {
-  if (!speedMs) return "—";
-  const secPerKm = Math.round(1000 / speedMs);
-  return formatTime(secPerKm) + "/km";
 }
 
 interface RunsPageProps {
@@ -87,7 +53,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
 
       {/* Type filter tabs */}
       <div className="flex gap-1 rounded-lg border border-neutral-800 bg-neutral-900 p-1 w-fit">
-        {FILTERS.map((f) => {
+        {ACTIVITY_FILTERS.map((f) => {
           const isActive = f.value === type || (!f.value && !type);
           return (
             <a
@@ -133,11 +99,16 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
               {activities.map((act) => (
                 <tr key={act.id} className="hover:bg-neutral-800/30 transition-colors">
                   <td className="px-4 py-3">
-                    <p className="font-medium truncate max-w-[180px]">{act.name}</p>
-                    <p className="text-xs text-neutral-500">{act.sport_type}</p>
+                    <div className="flex items-center gap-2">
+                      <span aria-hidden>{ACTIVITY_TYPE_ICON[act.type] ?? "🏃"}</span>
+                      <div>
+                        <p className="font-medium truncate max-w-[180px]">{act.name}</p>
+                        <p className="text-xs text-neutral-500">{act.sport_type}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-neutral-400 whitespace-nowrap">
-                    {formatDate(act.start_date_local)}
+                    {formatDate(act.start_date_local, true)}
                   </td>
                   <td className="px-4 py-3 tabular-nums">{formatDistance(act.distance)}</td>
                   <td className="px-4 py-3 tabular-nums text-neutral-400">

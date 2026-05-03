@@ -1,19 +1,9 @@
-import type { PersonalBest, ApiResponse } from "@goalsplit/types";
+import type { PersonalBest } from "@goalsplit/types";
 import { formatTime, formatPace } from "@/lib/format";
-
-async function fetchPBs(): Promise<PersonalBest[]> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
-  try {
-    const res = await fetch(`${apiUrl}/pbs`, { next: { revalidate: 0 } });
-    const json: ApiResponse<PersonalBest[]> = await res.json();
-    return json.data;
-  } catch {
-    return [];
-  }
-}
+import { serverFetch } from "@/lib/api";
 
 export async function PbsTable() {
-  const pbs = await fetchPBs();
+  const pbs = await serverFetch<PersonalBest[]>("/pbs", []);
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
