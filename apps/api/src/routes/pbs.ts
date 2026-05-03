@@ -1,78 +1,73 @@
 import { Router } from "express";
 import type { PersonalBest } from "@goalsplit/types";
+import { sql } from "../db/index.js";
 
 export const pbsRouter = Router();
 
-// Times in seconds, paces in seconds per km
-// 5k:  19:46 = 1186s  pace 3:57 = 237s/km  | goal 19:00 = 1140s  pace 3:45 = 225s/km
-// 10k: 39:42 = 2382s  pace 3:58 = 238s/km  | goal 39:00 = 2340s  pace 3:54 = 234s/km
-// HM:  1:30:36 = 5436s pace 4:17 = 257s/km | goal 1:25:00 = 5100s pace 4:02 = 242s/km
-// M:   3:32:10 = 12730s pace 5:01 = 301s/km | goal 3:20:00 = 12000s pace 4:44 = 284s/km
-const SEED: PersonalBest[] = [
-  {
-    id: "pb-5k",
-    distance: 5,
-    distanceLabel: "5K",
-    time: 1186,
-    pace: 237,
-    goalTime: 1140,
-    goalPace: 225,
-    date: "2024-09-15",
-  },
-  {
-    id: "pb-10k",
-    distance: 10,
-    distanceLabel: "10K",
-    time: 2382,
-    pace: 238,
-    goalTime: 2340,
-    goalPace: 234,
-    date: "2024-10-20",
-  },
-  {
-    id: "pb-hm",
-    distance: 21.0975,
-    distanceLabel: "Half Marathon",
-    time: 5436,
-    pace: 257,
-    goalTime: 5100,
-    goalPace: 242,
-    date: "2024-11-03",
-  },
-  {
-    id: "pb-mara",
-    distance: 42.195,
-    distanceLabel: "Marathon",
-    time: 12730,
-    pace: 301,
-    goalTime: 12000,
-    goalPace: 284,
-    date: "2025-04-06",
-  },
-];
+interface PbRow {
+  id: string;
+  distance: number;
+  distance_label: string;
+  time: number;
+  pace: number;
+  goal_time: number | null;
+  goal_pace: number | null;
+  date: string;
+  run_id: string | null;
+  notes: string | null;
+}
 
-let personalBests: PersonalBest[] = [...SEED];
+function rowToPb(row: PbRow): PersonalBest {
+  return {
+    id: row.id,
+    distance: row.distance,
+    distanceLabel: row.distance_label,
+    time: row.time,
+    pace: row.pace,
+    goalTime: row.goal_time ?? undefined,
+    goalPace: row.goal_pace ?? undefined,
+    date: row.date,
+    runId: row.run_id ?? undefined,
+    notes: row.notes ?? undefined,
+  };
+}
 
-pbsRouter.get("/", (_req, res) => {
-  res.json({ data: personalBests });
+pbsRouter.get("/", async (_req, res) => {
+  const rows = await sql<PbRow[]>`SELECT * FROM personal_bests ORDER BY distance ASC`;
+  res.json({ data: rows.map(rowToPb) });
 });
 
-pbsRouter.post("/", (req, res) => {
-  const pb: PersonalBest = { id: crypto.randomUUID(), ...req.body };
-  personalBests.push(pb);
-  res.status(201).json({ data: pb });
+pbsRouter.post("/", async (req, res) => {
+  const { distance, distanceLabel, time, pace, goalTime, goalPace, date } = req.body;
+  const [row] = await sql<PbRow[]>`
+    INSERT INTO personal_bests (id, distance, distance_label, time, pace, goal_time, goal_pace, date)
+    VALUES (
+      ${crypto.randomUUID()}, ${distance}, ${distanceLabel}, ${time}, ${pace},
+      ${goalTime ?? null}, ${goalPace ?? null}, ${date}
+    )
+    RETURNING *
+  `;
+  res.status(201).json({ data: rowToPb(row) });
 });
 
-pbsRouter.patch("/:id", (req, res) => {
-  const idx = personalBests.findIndex((pb) => pb.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "PB not found", statusCode: 404 });
-  personalBests[idx] = { ...personalBests[idx], ...req.body };
-  return res.json({ data: personalBests[idx] });
+pbsRouter.patch("/:id", async (req, res) => {
+  const { time, pace, goalTime, goalPace, date } = req.body;
+  const [row] = await sql<PbRow[]>`
+    UPDATE personal_bests SET
+      time      = COALESCE(${time ?? null}, time),
+      pace      = COALESCE(${pace ?? null}, pace),
+      goal_time = COALESCE(${goalTime ?? null}, goal_time),
+      goal_pace = COALESCE(${goalPace ?? null}, goal_pace),
+      date      = COALESCE(${date ?? null}, date)
+    WHERE id = ${req.params.id}
+    RETURNING *
+  `;
+  if (!row) return res.status(404).json({ error: "PB not found", statusCode: 404 });
+  return res.json({ data: rowToPb(row) });
 });
 
-pbsRouter.delete("/:id", (req, res) => {
-  const idx = personalBests.findIndex((pb) => pb.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "PB not found", statusCode: 404 });
-  personalBests.splice(idx, 1);
+pbsRouter.delete("/:id", async (req, res) => {
+  const result = await sql`DELETE FROM personal_bests WHERE id = ${req.params.id} RETURNING id`;
+  if (result.length === 0) return res.status(404).json({ error: "PB not found", statusCode: 404 });
   return res.status(204).send();
 });

@@ -1,85 +1,91 @@
 import { Router } from "express";
 import type { Goal } from "@goalsplit/types";
+import { sql } from "../db/index.js";
 
 export const goalsRouter = Router();
 
-const NOW = new Date().toISOString();
+interface GoalRow {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  type: string;
+  target_value: number;
+  current_value: number;
+  unit: string;
+  target_date: string | null;
+  status: string;
+  prioritized: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
 
-// prettier-ignore
-const SEED: Goal[] = [
-  // ── Running ──────────────────────────────────────────────────────────────
-  { id: "g-beer-mile",    name: "Beer Mile",            category: "running",   type: "completion", targetValue: 1,     currentValue: 0,    unit: "completion", status: "active",    prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub6-mile",    name: "Sub 6 Minute Mile",    category: "running",   type: "time",       targetValue: 360,   currentValue: 355,  unit: "seconds",    status: "completed", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub20-5k",     name: "Sub 20 Minute 5K",     category: "running",   type: "time",       targetValue: 1200,  currentValue: 1186, unit: "seconds",    status: "completed", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub40-10k",    name: "Sub 40 Minute 10K",    category: "running",   type: "time",       targetValue: 2400,  currentValue: 2382, unit: "seconds",    status: "completed", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub130-hm",    name: "Sub 1:30 Half Marathon", category: "running", type: "time",       targetValue: 5400,  currentValue: 5436, unit: "seconds",    status: "active",    prioritized: true,  createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub330-mara",  name: "Sub 3:30 Marathon",    category: "running",   type: "time",       targetValue: 12600, currentValue: 12730, unit: "seconds",   status: "active",    prioritized: true,  createdAt: NOW, updatedAt: NOW },
-  { id: "g-sub300-mara",  name: "Sub 3:00 Marathon",    category: "running",   type: "time",       targetValue: 10800, currentValue: 12730, unit: "seconds",   status: "active",    prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-mara-7cont",   name: "Marathon on Every Continent", category: "running", type: "completion", targetValue: 7, currentValue: 0,  unit: "continents", status: "active",    prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-wings35k",     name: "35K Wings for Life Run (5:09/km)", category: "running", type: "distance", targetValue: 35, currentValue: 0, unit: "km",  status: "active",    prioritized: false, createdAt: NOW, updatedAt: NOW },
-
-  // ── Triathlon & Multi-Sport ───────────────────────────────────────────────
-  { id: "g-tri-complete", name: "Complete a Triathlon",        category: "triathlon", type: "completion", targetValue: 1,     currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-oly-tri",      name: "Sub 3 Hour Olympic Triathlon", category: "triathlon", type: "time",     targetValue: 10800, currentValue: 0, unit: "seconds",    status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-half-iron",    name: "Sub 6 Hour Half-Ironman",      category: "triathlon", type: "time",     targetValue: 21600, currentValue: 0, unit: "seconds",    status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-ironman",      name: "Sub 13 Hour Ironman",          category: "triathlon", type: "time",     targetValue: 46800, currentValue: 0, unit: "seconds",    status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-
-  // ── Ultra Endurance ───────────────────────────────────────────────────────
-  { id: "g-backyard",     name: "Backyard Ultra (24 Loops)",  category: "ultra", type: "completion", targetValue: 1,  currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-50k",          name: "Complete 50K Trail Ultra",   category: "ultra", type: "completion", targetValue: 1,  currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-100k",         name: "Complete 100K Trail Ultra",  category: "ultra", type: "completion", targetValue: 1,  currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-100m",         name: "Complete 100M Trail Ultra",  category: "ultra", type: "completion", targetValue: 1,  currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-utmb",         name: "Complete a UTMB Event",      category: "ultra", type: "completion", targetValue: 1,  currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-
-  // ── Adventure ─────────────────────────────────────────────────────────────
-  { id: "g-swim-3k",      name: "Open Water 3K Swim",         category: "adventure", type: "completion", targetValue: 1, currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-climb4k",      name: "Climb 4000m+",               category: "adventure", type: "completion", targetValue: 1, currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-kili",         name: "Climb Kilimanjaro",           category: "adventure", type: "completion", targetValue: 1, currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-
-  // ── Fitness ───────────────────────────────────────────────────────────────
-  { id: "g-mud-run",      name: "Complete a Mud Run",          category: "fitness", type: "completion", targetValue: 1,    currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-murph",        name: "Complete a Murph",            category: "fitness", type: "completion", targetValue: 1,    currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-hyrox",        name: "Sub 1:15 Hyrox",              category: "fitness", type: "time",       targetValue: 4500, currentValue: 0, unit: "seconds",    status: "active", prioritized: true,  createdAt: NOW, updatedAt: NOW },
-  { id: "g-deadlift",     name: "Deadlift 2x Bodyweight",      category: "fitness", type: "completion", targetValue: 1,    currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-  { id: "g-bench",        name: "Bench Press Bodyweight",       category: "fitness", type: "completion", targetValue: 1,    currentValue: 0, unit: "completion", status: "active", prioritized: false, createdAt: NOW, updatedAt: NOW },
-];
-
-export let goals: Goal[] = [...SEED];
-
-goalsRouter.get("/", (_req, res) => {
-  res.json({ data: goals });
-});
-
-goalsRouter.get("/:id", (req, res) => {
-  const goal = goals.find((g) => g.id === req.params.id);
-  if (!goal) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
-  return res.json({ data: goal });
-});
-
-goalsRouter.post("/", (req, res) => {
-  const now = new Date().toISOString();
-  const goal: Goal = {
-    id: crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-    currentValue: 0,
-    status: "active",
-    ...req.body,
+function rowToGoal(row: GoalRow): Goal {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    category: row.category as Goal["category"],
+    type: row.type as Goal["type"],
+    targetValue: row.target_value,
+    currentValue: row.current_value,
+    unit: row.unit,
+    targetDate: row.target_date ?? undefined,
+    status: row.status as Goal["status"],
+    prioritized: row.prioritized,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
   };
-  goals.push(goal);
-  res.status(201).json({ data: goal });
+}
+
+goalsRouter.get("/", async (_req, res) => {
+  const rows = await sql<GoalRow[]>`SELECT * FROM goals ORDER BY created_at ASC`;
+  res.json({ data: rows.map(rowToGoal) });
 });
 
-goalsRouter.patch("/:id", (req, res) => {
-  const idx = goals.findIndex((g) => g.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
-  goals[idx] = { ...goals[idx], ...req.body, updatedAt: new Date().toISOString() };
-  return res.json({ data: goals[idx] });
+goalsRouter.get("/:id", async (req, res) => {
+  const [row] = await sql<GoalRow[]>`SELECT * FROM goals WHERE id = ${req.params.id}`;
+  if (!row) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
+  return res.json({ data: rowToGoal(row) });
 });
 
-goalsRouter.delete("/:id", (req, res) => {
-  const idx = goals.findIndex((g) => g.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
-  goals.splice(idx, 1);
+goalsRouter.post("/", async (req, res) => {
+  const { name, description, category, type, targetValue, currentValue = 0, unit, targetDate, status = "active", prioritized = false } = req.body;
+  const [row] = await sql<GoalRow[]>`
+    INSERT INTO goals (id, name, description, category, type, target_value, current_value, unit, target_date, status, prioritized)
+    VALUES (
+      ${crypto.randomUUID()}, ${name}, ${description ?? null}, ${category}, ${type},
+      ${targetValue}, ${currentValue}, ${unit}, ${targetDate ?? null}, ${status}, ${prioritized}
+    )
+    RETURNING *
+  `;
+  res.status(201).json({ data: rowToGoal(row) });
+});
+
+goalsRouter.patch("/:id", async (req, res) => {
+  const { name, description, category, type, targetValue, currentValue, unit, targetDate, status, prioritized } = req.body;
+  const [row] = await sql<GoalRow[]>`
+    UPDATE goals SET
+      name          = COALESCE(${name ?? null}, name),
+      description   = COALESCE(${description ?? null}, description),
+      category      = COALESCE(${category ?? null}, category),
+      type          = COALESCE(${type ?? null}, type),
+      target_value  = COALESCE(${targetValue ?? null}, target_value),
+      current_value = COALESCE(${currentValue ?? null}, current_value),
+      unit          = COALESCE(${unit ?? null}, unit),
+      target_date   = COALESCE(${targetDate ?? null}, target_date),
+      status        = COALESCE(${status ?? null}, status),
+      prioritized   = COALESCE(${prioritized ?? null}, prioritized),
+      updated_at    = NOW()
+    WHERE id = ${req.params.id}
+    RETURNING *
+  `;
+  if (!row) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
+  return res.json({ data: rowToGoal(row) });
+});
+
+goalsRouter.delete("/:id", async (req, res) => {
+  const result = await sql`DELETE FROM goals WHERE id = ${req.params.id} RETURNING id`;
+  if (result.length === 0) return res.status(404).json({ error: "Goal not found", statusCode: 404 });
   return res.status(204).send();
 });

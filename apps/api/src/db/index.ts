@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { seedIfEmpty } from "./seed.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL env var is not set");
@@ -66,6 +67,41 @@ export async function initSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_activities_type
       ON activities (user_id, type, start_date DESC)
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS goals (
+      id            TEXT PRIMARY KEY,
+      name          TEXT NOT NULL,
+      description   TEXT,
+      category      TEXT NOT NULL,
+      type          TEXT NOT NULL,
+      target_value  DOUBLE PRECISION NOT NULL,
+      current_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+      unit          TEXT NOT NULL,
+      target_date   TEXT,
+      status        TEXT NOT NULL DEFAULT 'active',
+      prioritized   BOOLEAN NOT NULL DEFAULT false,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS personal_bests (
+      id             TEXT PRIMARY KEY,
+      distance       DOUBLE PRECISION NOT NULL,
+      distance_label TEXT NOT NULL,
+      time           INTEGER NOT NULL,
+      pace           INTEGER NOT NULL,
+      goal_time      INTEGER,
+      goal_pace      INTEGER,
+      date           TEXT NOT NULL,
+      run_id         TEXT,
+      notes          TEXT
+    )
+  `;
+
+  await seedIfEmpty(sql);
 
   console.log("DB schema ready");
 }
