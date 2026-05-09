@@ -45,6 +45,7 @@ export async function syncActivities(userId: string): Promise<SyncResult> {
   let page = 1;
   let totalSynced = 0;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { activities, usage, limit } = await fetchActivities(accessToken, {
       after: after ?? undefined,

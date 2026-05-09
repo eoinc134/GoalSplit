@@ -3,7 +3,7 @@ import type { Run } from "@goalsplit/types";
 
 export const runsRouter = Router();
 
-let runs: Run[] = [];
+const runs: Run[] = [];
 
 runsRouter.get("/", (_req, res) => {
   const sorted = [...runs].sort((a, b) => b.date.localeCompare(a.date));

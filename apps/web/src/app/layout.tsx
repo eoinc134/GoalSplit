@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,10 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               GoalSplit
             </span>
             <div className="flex gap-6 text-sm text-neutral-400">
-              <a href="/" className="hover:text-neutral-50 transition-colors">Dashboard</a>
-              <a href="/goals" className="hover:text-neutral-50 transition-colors">Goals</a>
-              <a href="/runs" className="hover:text-neutral-50 transition-colors">Activities</a>
-              <a href="/pbs" className="hover:text-neutral-50 transition-colors">PBs</a>
+              <Link href="/" className="hover:text-neutral-50 transition-colors">Dashboard</Link>
+              <Link href="/goals" className="hover:text-neutral-50 transition-colors">Goals</Link>
+              <Link href="/runs" className="hover:text-neutral-50 transition-colors">Activities</Link>
+              <Link href="/pbs" className="hover:text-neutral-50 transition-colors">PBs</Link>
             </div>
           </div>
         </nav>
