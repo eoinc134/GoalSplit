@@ -30,7 +30,19 @@ packages/
 npm install
 ```
 
-**2. Start the database:**
+**2. Configure environment variables:**
+
+```sh
+# Docker Compose variables (root)
+cp .env.example .env
+
+# API variables
+cp apps/api/.env.example apps/api/.env
+```
+
+Fill in your Strava credentials in `apps/api/.env` (see [Strava integration](#strava-integration) below). All other values are pre-filled for the local Docker setup.
+
+**3. Start the database:**
 
 Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
@@ -38,17 +50,7 @@ Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 docker compose up -d
 ```
 
-This starts PostgreSQL on **port 5433** (5432 is left free for any locally installed PostgreSQL).
-The schema is created automatically when the API first starts.
-
-**3. Configure environment variables:**
-
-```sh
-cp apps/api/.env.example  apps/api/.env
-cp apps/web/.env.example  apps/web/.env.local
-```
-
-Open `apps/api/.env` and fill in your Strava credentials (see below). The database URL is pre-filled for the Docker setup.
+This starts PostgreSQL on **port 5433** (5432 is left free for any locally installed PostgreSQL). The schema and seed data are created automatically when the API first starts.
 
 **4. Start all apps:**
 
@@ -87,22 +89,60 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `DELETE` | `/api/auth/strava` | Disconnect Strava |
 | `GET` | `/api/activities` | List synced activities (`?type=Run&limit=50`) |
 | `POST` | `/api/activities/sync` | Sync latest activities from Strava |
-| `GET` | `/api/goals` | List goals |
+| `GET` | `/api/goals` | List all goals |
+| `POST` | `/api/goals` | Create a goal |
+| `PATCH` | `/api/goals/:id` | Update a goal |
+| `DELETE` | `/api/goals/:id` | Delete a goal |
 | `GET` | `/api/pbs` | List personal bests |
+| `PATCH` | `/api/pbs/:id` | Update a personal best |
+| `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
 
 ## Deployment (Railway)
 
-1. Push the repo to GitHub
-2. Create a new Railway project and add a **PostgreSQL** addon
-3. Deploy the `apps/api` service — Railway sets `DATABASE_URL` automatically
-4. Deploy the `apps/web` service and set `NEXT_PUBLIC_API_URL` to the API's public URL
-5. Set `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, and update `STRAVA_REDIRECT_URI` to the production callback URL in both Railway and your Strava app settings
+Create two services in Railway (both pointing to this repo) plus a **PostgreSQL** addon.
 
-## Other commands
+### API service
+
+| Setting | Value |
+|---|---|
+| Build command | `npm ci && npx turbo build --filter=@goalsplit/api` |
+| Start command | `node apps/api/dist/index.js` |
+
+Environment variables:
+
+```
+DATABASE_URL          → set automatically by the Railway Postgres addon
+STRAVA_CLIENT_ID      → your Strava app client ID
+STRAVA_CLIENT_SECRET  → your Strava app secret
+STRAVA_REDIRECT_URI   → https://<api-domain>.railway.app/api/auth/strava/callback
+FRONTEND_URL          → https://<web-domain>.railway.app
+```
+
+### Web service
+
+| Setting | Value |
+|---|---|
+| Build command | `npm ci && npx turbo build --filter=@goalsplit/web` |
+| Start command | `npm run start --workspace=apps/web` |
+
+Environment variables:
+
+```
+NEXT_PUBLIC_API_URL   → https://<api-domain>.railway.app/api
+```
+
+> **Note:** `NEXT_PUBLIC_API_URL` must include `https://` and is baked in at build time — redeploy the web service after changing it.
+
+Also update the **Authorization Callback Domain** in your [Strava app settings](https://www.strava.com/settings/api) to `<api-domain>.railway.app`.
+
+## Commands
 
 ```sh
+npm run dev          # start all apps in development mode
 npm run build        # production build (all apps)
 npm run type-check   # TypeScript check (all apps)
 npm run lint         # lint (all apps)
-docker compose down  # stop the database
+npm run test         # run tests (all apps)
+docker compose up -d # start local database
+docker compose down  # stop local database
 ```
