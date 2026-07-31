@@ -1,5 +1,10 @@
+import type postgres from "postgres";
 import { sql } from "../db/index.js";
-import { fetchActivities, type StravaActivityResponse } from "../lib/strava-client.js";
+import {
+  fetchActivities,
+  fetchActivityDetail,
+  type StravaActivityResponse,
+} from "../lib/strava-client.js";
 import { getValidAccessToken } from "./token.service.js";
 import type { SyncResult } from "@goalsplit/types";
 
@@ -13,8 +18,13 @@ async function getLastActivityTimestamp(userId: string): Promise<number | null> 
   return row?.last_ts ?? null;
 }
 
-async function upsertActivity(userId: string, act: StravaActivityResponse): Promise<void> {
-  await sql`
+// Upserts the flattened row and returns its internal id plus whether this was
+// a brand-new activity (vs. re-syncing one we already had).
+async function upsertActivity(
+  userId: string,
+  act: StravaActivityResponse,
+): Promise<{ id: string; inserted: boolean }> {
+  const [row] = await sql<{ id: string; inserted: boolean }[]>`
     INSERT INTO activities (
       id, strava_id, user_id, name, type, sport_type,
       distance, moving_time, elapsed_time, total_elevation_gain,
@@ -30,12 +40,46 @@ async function upsertActivity(userId: string, act: StravaActivityResponse): Prom
     ON CONFLICT (strava_id) DO UPDATE SET
       name      = EXCLUDED.name,
       synced_at = NOW()
+    RETURNING id, (xmax = 0) AS inserted
+  `;
+  return row;
+}
+
+// Append-only audit dump — one row per (activity, source) observation.
+async function insertDump(
+  activityId: string,
+  stravaId: number,
+  source: "list" | "detail",
+  payload: unknown,
+): Promise<void> {
+  await sql`
+    INSERT INTO activity_dumps (id, activity_id, strava_id, source, payload)
+    VALUES (${crypto.randomUUID()}, ${activityId}, ${stravaId}, ${source}, ${sql.json(payload as postgres.JSONValue)})
   `;
 }
 
 // Strava limits: 100 req/15min (read), 1000 req/day.
-// We stop paginating if we've used ≥80% of the 15-minute read quota.
+// We stop making further requests once we've used ≥80% of the 15-minute read quota.
 const RATE_LIMIT_SAFE_THRESHOLD = 0.8;
+
+// Upserts one activity, always dumping its list payload, and — for activities
+// we haven't seen before — dumps the richer detail payload too, as long as
+// there's rate-limit headroom. Returns the rate fraction observed afterwards.
+async function syncOneActivity(
+  userId: string,
+  accessToken: string,
+  act: StravaActivityResponse,
+  rateFraction: number,
+): Promise<number> {
+  const { id, inserted } = await upsertActivity(userId, act);
+  await insertDump(id, act.id, "list", act);
+
+  if (!inserted || rateFraction >= RATE_LIMIT_SAFE_THRESHOLD) return rateFraction;
+
+  const { detail, usage, limit } = await fetchActivityDetail(accessToken, act.id);
+  await insertDump(id, act.id, "detail", detail);
+  return limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
+}
 
 export async function syncActivities(userId: string): Promise<SyncResult> {
   const accessToken = await getValidAccessToken();
@@ -44,6 +88,7 @@ export async function syncActivities(userId: string): Promise<SyncResult> {
   const after = await getLastActivityTimestamp(userId);
   let page = 1;
   let totalSynced = 0;
+  let rateFraction = 0;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -52,13 +97,13 @@ export async function syncActivities(userId: string): Promise<SyncResult> {
       page,
       perPage: 200,
     });
+    rateFraction = limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
 
     for (const act of activities) {
-      await upsertActivity(userId, act);
+      rateFraction = await syncOneActivity(userId, accessToken, act, rateFraction);
       totalSynced++;
     }
 
-    const rateFraction = limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
     const isLastPage = activities.length < 200;
 
     if (isLastPage || rateFraction >= RATE_LIMIT_SAFE_THRESHOLD) break;

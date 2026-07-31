@@ -54,7 +54,8 @@ describe("GET /api/activities/export", () => {
   it("returns activities and a markdown summary as JSON by default", async () => {
     mockSql
       .mockResolvedValueOnce([{ id: "user-1" }])
-      .mockResolvedValueOnce([makeActivityRow()]);
+      .mockResolvedValueOnce([makeActivityRow()])
+      .mockResolvedValueOnce([]); // dumps
 
     const res = await request(app).get("/api/activities/export?days=7");
     expect(res.status).toBe(200);
@@ -70,13 +71,44 @@ describe("GET /api/activities/export", () => {
   it("returns a markdown file when format=markdown", async () => {
     mockSql
       .mockResolvedValueOnce([{ id: "user-1" }])
-      .mockResolvedValueOnce([makeActivityRow()]);
+      .mockResolvedValueOnce([makeActivityRow()])
+      .mockResolvedValueOnce([]); // dumps
 
     const res = await request(app).get("/api/activities/export?format=markdown");
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("text/markdown");
     expect(res.headers["content-disposition"]).toContain("attachment");
     expect(res.text).toContain("Training log");
+  });
+
+  it("enriches the markdown notes section from raw dump payloads", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }])
+      .mockResolvedValueOnce([makeActivityRow()])
+      .mockResolvedValueOnce([
+        {
+          activity_id: "act-1",
+          source: "list",
+          payload: { workout_type: 1, suffer_score: 87, average_cadence: 86 },
+        },
+        {
+          activity_id: "act-1",
+          source: "detail",
+          payload: {
+            description: "Felt strong",
+            splits_metric: [{ average_speed: 4.2 }, { average_speed: 4.0 }],
+            best_efforts: [{ name: "5K", elapsed_time: 1198 }],
+          },
+        },
+      ]);
+
+    const res = await request(app).get("/api/activities/export");
+    expect(res.status).toBe(200);
+    expect(res.body.data.summary.totalEffort).toBe(87);
+    expect(res.body.data.markdown).toContain("race, effort 87, cadence 172spm");
+    expect(res.body.data.markdown).toContain('"Felt strong"');
+    expect(res.body.data.markdown).toContain("Splits:");
+    expect(res.body.data.markdown).toContain("Best effort: 5K in 19:58");
   });
 
   it("clamps days to the 1-365 range", async () => {

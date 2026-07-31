@@ -68,6 +68,26 @@ export async function initSchema(): Promise<void> {
       ON activities (user_id, type, start_date DESC)
   `;
 
+  // Append-only audit log of raw Strava payloads per activity. We flatten only
+  // what the app needs into `activities`; this keeps everything else (splits,
+  // laps, best efforts, description, ...) around for richer exports later
+  // without having to re-fetch from Strava or migrate columns for every new field.
+  await sql`
+    CREATE TABLE IF NOT EXISTS activity_dumps (
+      id          TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      strava_id   BIGINT NOT NULL,
+      source      TEXT NOT NULL CHECK (source IN ('list', 'detail')),
+      payload     JSONB NOT NULL,
+      fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_activity_dumps_activity
+      ON activity_dumps (activity_id, fetched_at DESC)
+  `;
+
   await sql`
     CREATE TABLE IF NOT EXISTS goals (
       id            TEXT PRIMARY KEY,

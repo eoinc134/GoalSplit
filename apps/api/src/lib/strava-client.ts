@@ -42,6 +42,11 @@ export interface StravaActivityResponse {
   timezone: string;
 }
 
+// The detailed representation (GET /activities/{id}) carries many more fields
+// than the list endpoint (splits, laps, best_efforts, description, gear, ...)
+// and Strava adds fields over time — we store it as-is rather than typing every key.
+export type StravaActivityDetail = Record<string, unknown>;
+
 export interface RateLimit {
   fifteenMin: number;
   daily: number;
@@ -51,6 +56,14 @@ export interface FetchActivitiesResult {
   activities: StravaActivityResponse[];
   usage: RateLimit;
   limit: RateLimit;
+}
+
+function parseRateHeader(header: string | null, defaults: [number, number]): RateLimit {
+  const parts = (header ?? "").split(",").map(Number);
+  return {
+    fifteenMin: parts[0] ?? defaults[0],
+    daily: parts[1] ?? defaults[1],
+  };
 }
 
 export function buildAuthUrl(): string {
@@ -117,16 +130,32 @@ export async function fetchActivities(
   if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
   if (!res.ok) throw new Error(`Strava activities fetch failed: ${res.status}`);
 
-  const parseRateHeader = (header: string | null, defaults: [number, number]): RateLimit => {
-    const parts = (header ?? "").split(",").map(Number);
-    return {
-      fifteenMin: parts[0] ?? defaults[0],
-      daily: parts[1] ?? defaults[1],
-    };
-  };
-
   return {
     activities: (await res.json()) as StravaActivityResponse[],
+    usage: parseRateHeader(res.headers.get("X-RateLimit-Usage"), [0, 0]),
+    limit: parseRateHeader(res.headers.get("X-RateLimit-Limit"), [100, 1000]),
+  };
+}
+
+export interface FetchActivityDetailResult {
+  detail: StravaActivityDetail;
+  usage: RateLimit;
+  limit: RateLimit;
+}
+
+export async function fetchActivityDetail(
+  accessToken: string,
+  stravaId: number,
+): Promise<FetchActivityDetailResult> {
+  const res = await fetch(`${STRAVA_API}/activities/${stravaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+  if (!res.ok) throw new Error(`Strava activity detail fetch failed: ${res.status}`);
+
+  return {
+    detail: (await res.json()) as StravaActivityDetail,
     usage: parseRateHeader(res.headers.get("X-RateLimit-Usage"), [0, 0]),
     limit: parseRateHeader(res.headers.get("X-RateLimit-Limit"), [100, 1000]),
   };

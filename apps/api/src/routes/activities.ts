@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
 import { syncActivities } from "../services/sync.service.js";
-import { buildTrainingMarkdown, buildTrainingSummary } from "../lib/training-export.js";
+import {
+  buildTrainingMarkdown,
+  buildTrainingSummary,
+  type ActivityDumpPayloads,
+} from "../lib/training-export.js";
 
 export const activitiesRouter = Router();
 
@@ -59,6 +63,29 @@ activitiesRouter.get("/", async (req, res) => {
   return res.json({ data: activities, total: count });
 });
 
+// Latest 'list' and 'detail' dump per activity, keyed by activity id.
+async function fetchDumpsForActivities(
+  activityIds: string[],
+): Promise<Record<string, ActivityDumpPayloads>> {
+  if (activityIds.length === 0) return {};
+
+  const rows = await sql<
+    { activity_id: string; source: "list" | "detail"; payload: Record<string, unknown> }[]
+  >`
+    SELECT DISTINCT ON (activity_id, source) activity_id, source, payload
+    FROM activity_dumps
+    WHERE activity_id = ANY(${activityIds})
+    ORDER BY activity_id, source, fetched_at DESC
+  `;
+
+  const dumps: Record<string, ActivityDumpPayloads> = {};
+  for (const row of rows) {
+    dumps[row.activity_id] ??= {};
+    dumps[row.activity_id][row.source] = row.payload;
+  }
+  return dumps;
+}
+
 activitiesRouter.get("/export", async (req, res) => {
   const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30")) || 30, 1), 365);
   const type = typeof req.query.type === "string" ? req.query.type : undefined;
@@ -85,14 +112,17 @@ activitiesRouter.get("/export", async (req, res) => {
         ORDER BY start_date DESC
       `;
 
-  const markdown = buildTrainingMarkdown(activities, days);
+  const dumps = await fetchDumpsForActivities(activities.map((a) => a.id));
+  const markdown = buildTrainingMarkdown(activities, days, dumps);
 
   if (format === "markdown") {
     res.setHeader("Content-Disposition", `attachment; filename="training-export-${days}d.md"`);
     return res.type("text/markdown").send(markdown);
   }
 
-  return res.json({ data: { summary: buildTrainingSummary(activities, days), markdown, activities } });
+  return res.json({
+    data: { summary: buildTrainingSummary(activities, days, dumps), markdown, activities },
+  });
 });
 
 activitiesRouter.post("/sync", async (_req, res) => {
