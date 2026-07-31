@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
 import { syncActivities } from "../services/sync.service.js";
+import { buildTrainingMarkdown, buildTrainingSummary } from "../lib/training-export.js";
 
 export const activitiesRouter = Router();
 
-interface ActivityRow {
+export interface ActivityRow {
   id: string;
   strava_id: number;
   name: string;
@@ -56,6 +57,42 @@ activitiesRouter.get("/", async (req, res) => {
       `;
 
   return res.json({ data: activities, total: count });
+});
+
+activitiesRouter.get("/export", async (req, res) => {
+  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30")) || 30, 1), 365);
+  const type = typeof req.query.type === "string" ? req.query.type : undefined;
+  const format = req.query.format === "markdown" ? "markdown" : "json";
+
+  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  if (!user) {
+    return format === "markdown"
+      ? res.type("text/markdown").send(buildTrainingMarkdown([], days))
+      : res.json({ data: { summary: buildTrainingSummary([], days), markdown: buildTrainingMarkdown([], days), activities: [] } });
+  }
+
+  const activities = type
+    ? await sql<ActivityRow[]>`
+        SELECT * FROM activities
+        WHERE user_id = ${user.id} AND type = ${type}
+          AND start_date >= NOW() - (${days} || ' days')::INTERVAL
+        ORDER BY start_date DESC
+      `
+    : await sql<ActivityRow[]>`
+        SELECT * FROM activities
+        WHERE user_id = ${user.id}
+          AND start_date >= NOW() - (${days} || ' days')::INTERVAL
+        ORDER BY start_date DESC
+      `;
+
+  const markdown = buildTrainingMarkdown(activities, days);
+
+  if (format === "markdown") {
+    res.setHeader("Content-Disposition", `attachment; filename="training-export-${days}d.md"`);
+    return res.type("text/markdown").send(markdown);
+  }
+
+  return res.json({ data: { summary: buildTrainingSummary(activities, days), markdown, activities } });
 });
 
 activitiesRouter.post("/sync", async (_req, res) => {
