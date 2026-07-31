@@ -125,14 +125,15 @@ activitiesRouter.get("/export", async (req, res) => {
   });
 });
 
-activitiesRouter.post("/sync", async (_req, res) => {
+activitiesRouter.post("/sync", async (req, res) => {
   const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
   if (!user) {
     return res.status(401).json({ error: "Not connected to Strava", statusCode: 401 });
   }
 
   try {
-    const result = await syncActivities(user.id);
+    const full = req.query.full === "true";
+    const result = await syncActivities(user.id, { full });
     return res.json({ data: result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Sync failed";

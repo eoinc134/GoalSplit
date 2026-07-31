@@ -45,6 +45,15 @@ async function upsertActivity(
   return row;
 }
 
+async function hasDetailDump(activityId: string): Promise<boolean> {
+  const [row] = await sql<{ exists: boolean }[]>`
+    SELECT EXISTS(
+      SELECT 1 FROM activity_dumps WHERE activity_id = ${activityId} AND source = 'detail'
+    ) AS exists
+  `;
+  return row?.exists ?? false;
+}
+
 // Append-only audit dump — one row per (activity, source) observation.
 async function insertDump(
   activityId: string,
@@ -62,30 +71,40 @@ async function insertDump(
 // We stop making further requests once we've used ≥80% of the 15-minute read quota.
 const RATE_LIMIT_SAFE_THRESHOLD = 0.8;
 
-// Upserts one activity, always dumping its list payload, and — for activities
-// we haven't seen before — dumps the richer detail payload too, as long as
-// there's rate-limit headroom. Returns the rate fraction observed afterwards.
+// Upserts one activity, always dumping its list payload, and dumps the richer
+// detail payload too when it's missing — either because the activity is brand
+// new, or (during a full backfill) because it predates this feature — as long
+// as there's rate-limit headroom. Returns the rate fraction observed afterwards.
 async function syncOneActivity(
   userId: string,
   accessToken: string,
   act: StravaActivityResponse,
   rateFraction: number,
+  full: boolean,
 ): Promise<number> {
   const { id, inserted } = await upsertActivity(userId, act);
   await insertDump(id, act.id, "list", act);
 
-  if (!inserted || rateFraction >= RATE_LIMIT_SAFE_THRESHOLD) return rateFraction;
+  const needsDetail = inserted || (full && !(await hasDetailDump(id)));
+  if (!needsDetail || rateFraction >= RATE_LIMIT_SAFE_THRESHOLD) return rateFraction;
 
   const { detail, usage, limit } = await fetchActivityDetail(accessToken, act.id);
   await insertDump(id, act.id, "detail", detail);
   return limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
 }
 
-export async function syncActivities(userId: string): Promise<SyncResult> {
+export interface SyncOptions {
+  // Ignores the "only fetch activities newer than our latest" cursor and walks
+  // the full Strava history instead, backfilling dumps for activities synced
+  // before dumps existed. Rate-limit-safe and resumable across multiple calls.
+  full?: boolean;
+}
+
+export async function syncActivities(userId: string, options: SyncOptions = {}): Promise<SyncResult> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) throw new Error("Not connected to Strava");
 
-  const after = await getLastActivityTimestamp(userId);
+  const after = options.full ? null : await getLastActivityTimestamp(userId);
   let page = 1;
   let totalSynced = 0;
   let rateFraction = 0;
@@ -100,7 +119,7 @@ export async function syncActivities(userId: string): Promise<SyncResult> {
     rateFraction = limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
 
     for (const act of activities) {
-      rateFraction = await syncOneActivity(userId, accessToken, act, rateFraction);
+      rateFraction = await syncOneActivity(userId, accessToken, act, rateFraction, options.full ?? false);
       totalSynced++;
     }
 
