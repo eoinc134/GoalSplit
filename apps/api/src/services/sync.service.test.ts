@@ -91,6 +91,48 @@ describe("syncActivities", () => {
     expect(mockFetchActivityDetail).not.toHaveBeenCalled();
   });
 
+  it("full backfill ignores the last-synced cursor and backfills a missing detail dump", async () => {
+    mockFetchActivities.mockResolvedValueOnce({
+      activities: [makeActivity()],
+      usage: { fifteenMin: 1, daily: 1 },
+      limit: { fifteenMin: 100, daily: 1000 },
+    });
+    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: false }]); // upsertActivity (already existed)
+    mockSql.mockResolvedValueOnce([]); // insertDump: list
+    mockSql.mockResolvedValueOnce([{ exists: false }]); // hasDetailDump
+    mockFetchActivityDetail.mockResolvedValueOnce({
+      detail: {},
+      usage: { fifteenMin: 2, daily: 2 },
+      limit: { fifteenMin: 100, daily: 1000 },
+    });
+    mockSql.mockResolvedValueOnce([]); // insertDump: detail
+
+    await syncActivities("user-1", { full: true });
+
+    // No getLastActivityTimestamp call — after should be undefined, not a cursor.
+    expect(mockFetchActivities).toHaveBeenCalledWith("token-abc", {
+      after: undefined,
+      page: 1,
+      perPage: 200,
+    });
+    expect(mockFetchActivityDetail).toHaveBeenCalledWith("token-abc", 123);
+  });
+
+  it("full backfill does not re-fetch a detail dump that's already stored", async () => {
+    mockFetchActivities.mockResolvedValueOnce({
+      activities: [makeActivity()],
+      usage: { fifteenMin: 1, daily: 1 },
+      limit: { fifteenMin: 100, daily: 1000 },
+    });
+    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: false }]); // upsertActivity
+    mockSql.mockResolvedValueOnce([]); // insertDump: list
+    mockSql.mockResolvedValueOnce([{ exists: true }]); // hasDetailDump
+
+    await syncActivities("user-1", { full: true });
+
+    expect(mockFetchActivityDetail).not.toHaveBeenCalled();
+  });
+
   it("skips the detail fetch once the 15-minute rate budget is nearly exhausted", async () => {
     mockSql.mockResolvedValueOnce([{ last_ts: null }]);
     mockFetchActivities.mockResolvedValueOnce({
