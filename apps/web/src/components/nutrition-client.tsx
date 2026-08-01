@@ -28,12 +28,12 @@ function MacroStat({
   consumed,
   target,
   unit,
-}: {
+}: Readonly<{
   label: string;
   consumed: number;
   target?: number;
   unit: string;
-}) {
+}>) {
   const pct = target ? Math.round((consumed / target) * 100) : null;
   return (
     <StatCard
@@ -50,11 +50,11 @@ function AddMealModal({
   date,
   onClose,
   onAdd,
-}: {
+}: Readonly<{
   date: string;
   onClose: () => void;
   onAdd: (meal: Meal) => void;
-}) {
+}>) {
   const [tab, setTab] = useState<"search" | "manual">("search");
   const [mealType, setMealType] = useState<MealType>("other");
   const [saving, setSaving] = useState(false);
@@ -194,13 +194,13 @@ function AddMealModal({
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Add Meal</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
+          <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
         </div>
 
         {/* Meal type */}
         <div className="mb-4">
-          <label className="mb-1.5 block text-xs text-neutral-400">Meal</label>
-          <select value={mealType} onChange={(e) => setMealType(e.target.value as MealType)} className={inputCls}>
+          <label htmlFor="meal-type" className="mb-1.5 block text-xs text-neutral-400">Meal</label>
+          <select id="meal-type" value={mealType} onChange={(e) => setMealType(e.target.value as MealType)} className={inputCls}>
             {MEAL_TYPES.map((t) => (
               <option key={t} value={t}>{MEAL_TYPE_LABELS[t]}</option>
             ))}
@@ -212,6 +212,7 @@ function AddMealModal({
           {(["search", "manual"] as const).map((t) => (
             <button
               key={t}
+              type="button"
               onClick={() => setTab(t)}
               className={[
                 "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
@@ -246,6 +247,7 @@ function AddMealModal({
                   {foodList.map((food) => (
                     <li key={food.fdcId}>
                       <button
+                        type="button"
                         onClick={() => setSelected(food)}
                         className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-neutral-800/50 transition-colors"
                       >
@@ -265,13 +267,14 @@ function AddMealModal({
               <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium truncate">{selected.description}</span>
-                  <button onClick={() => setSelected(null)} className="text-xs text-neutral-500 hover:text-neutral-300">
+                  <button type="button" onClick={() => setSelected(null)} className="text-xs text-neutral-500 hover:text-neutral-300">
                     Change
                   </button>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs text-neutral-400">Quantity (grams)</label>
+                  <label htmlFor="meal-quantity" className="mb-1.5 block text-xs text-neutral-400">Quantity (grams)</label>
                   <input
+                    id="meal-quantity"
                     type="number"
                     value={quantityG}
                     onChange={(e) => setQuantityG(e.target.value)}
@@ -292,6 +295,7 @@ function AddMealModal({
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={submitFromFood}
                     disabled={saving}
                     className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50 transition-colors"
@@ -305,25 +309,25 @@ function AddMealModal({
         ) : (
           <form onSubmit={submitManual} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Homemade stew" className={inputCls} />
+              <label htmlFor="meal-name" className="mb-1.5 block text-xs text-neutral-400">Name</label>
+              <input id="meal-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Homemade stew" className={inputCls} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Calories</label>
-                <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} className={inputCls} />
+                <label htmlFor="meal-calories" className="mb-1.5 block text-xs text-neutral-400">Calories</label>
+                <input id="meal-calories" type="number" value={calories} onChange={(e) => setCalories(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Protein (g)</label>
-                <input type="number" value={proteinG} onChange={(e) => setProteinG(e.target.value)} className={inputCls} />
+                <label htmlFor="meal-protein" className="mb-1.5 block text-xs text-neutral-400">Protein (g)</label>
+                <input id="meal-protein" type="number" value={proteinG} onChange={(e) => setProteinG(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Carbs (g)</label>
-                <input type="number" value={carbsG} onChange={(e) => setCarbsG(e.target.value)} className={inputCls} />
+                <label htmlFor="meal-carbs" className="mb-1.5 block text-xs text-neutral-400">Carbs (g)</label>
+                <input id="meal-carbs" type="number" value={carbsG} onChange={(e) => setCarbsG(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Fat (g)</label>
-                <input type="number" value={fatG} onChange={(e) => setFatG(e.target.value)} className={inputCls} />
+                <label htmlFor="meal-fat" className="mb-1.5 block text-xs text-neutral-400">Fat (g)</label>
+                <input id="meal-fat" type="number" value={fatG} onChange={(e) => setFatG(e.target.value)} className={inputCls} />
               </div>
             </div>
             {error && <p className="text-xs text-red-400">{error}</p>}
@@ -373,10 +377,10 @@ function profileToForm(p: NutritionProfile): ProfileForm {
 function ProfileModal({
   onClose,
   onChanged,
-}: {
+}: Readonly<{
   onClose: () => void;
   onChanged: () => void;
-}) {
+}>) {
   const [form, setForm] = useState<ProfileForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -470,7 +474,7 @@ function ProfileModal({
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Profile & Targets</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
+          <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
         </div>
 
         {!form ? (
@@ -479,12 +483,12 @@ function ProfileModal({
           <form onSubmit={saveProfile} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Height (cm)</label>
-                <input type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} className={inputCls} />
+                <label htmlFor="profile-height" className="mb-1.5 block text-xs text-neutral-400">Height (cm)</label>
+                <input id="profile-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Sex</label>
-                <select value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value as "male" | "female" })} className={inputCls}>
+                <label htmlFor="profile-sex" className="mb-1.5 block text-xs text-neutral-400">Sex</label>
+                <select id="profile-sex" value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value as "male" | "female" })} className={inputCls}>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
@@ -492,22 +496,22 @@ function ProfileModal({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Birth date</label>
-              <input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputCls} />
+              <label htmlFor="profile-birth-date" className="mb-1.5 block text-xs text-neutral-400">Birth date</label>
+              <input id="profile-birth-date" type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className={inputCls} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Activity level</label>
-                <select value={form.activityLevel} onChange={(e) => setForm({ ...form, activityLevel: e.target.value as NutritionProfile["activityLevel"] })} className={inputCls}>
+                <label htmlFor="profile-activity-level" className="mb-1.5 block text-xs text-neutral-400">Activity level</label>
+                <select id="profile-activity-level" value={form.activityLevel} onChange={(e) => setForm({ ...form, activityLevel: e.target.value as NutritionProfile["activityLevel"] })} className={inputCls}>
                   {Object.entries(ACTIVITY_LEVEL_LABELS).map(([v, label]) => (
                     <option key={v} value={v}>{label}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Goal</label>
-                <select value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value as NutritionProfile["goal"] })} className={inputCls}>
+                <label htmlFor="profile-goal" className="mb-1.5 block text-xs text-neutral-400">Goal</label>
+                <select id="profile-goal" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value as NutritionProfile["goal"] })} className={inputCls}>
                   {Object.entries(NUTRITION_GOAL_LABELS).map(([v, label]) => (
                     <option key={v} value={v}>{label}</option>
                   ))}
@@ -517,23 +521,23 @@ function ProfileModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Calorie offset (vs. maintenance)</label>
-                <input type="number" value={form.calorieOffset} onChange={(e) => setForm({ ...form, calorieOffset: e.target.value })} placeholder="-500" className={inputCls} />
+                <label htmlFor="profile-calorie-offset" className="mb-1.5 block text-xs text-neutral-400">Calorie offset (vs. maintenance)</label>
+                <input id="profile-calorie-offset" type="number" value={form.calorieOffset} onChange={(e) => setForm({ ...form, calorieOffset: e.target.value })} placeholder="-500" className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Maintenance override</label>
-                <input type="number" value={form.maintenanceOverride} onChange={(e) => setForm({ ...form, maintenanceOverride: e.target.value })} placeholder="auto-calculated" className={inputCls} />
+                <label htmlFor="profile-maintenance-override" className="mb-1.5 block text-xs text-neutral-400">Maintenance override</label>
+                <input id="profile-maintenance-override" type="number" value={form.maintenanceOverride} onChange={(e) => setForm({ ...form, maintenanceOverride: e.target.value })} placeholder="auto-calculated" className={inputCls} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Protein (g/kg bodyweight)</label>
-                <input type="number" step="0.1" value={form.proteinGPerKg} onChange={(e) => setForm({ ...form, proteinGPerKg: e.target.value })} className={inputCls} />
+                <label htmlFor="profile-protein-per-kg" className="mb-1.5 block text-xs text-neutral-400">Protein (g/kg bodyweight)</label>
+                <input id="profile-protein-per-kg" type="number" step="0.1" value={form.proteinGPerKg} onChange={(e) => setForm({ ...form, proteinGPerKg: e.target.value })} className={inputCls} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">Fat (% of calories)</label>
-                <input type="number" value={form.fatPct} onChange={(e) => setForm({ ...form, fatPct: e.target.value })} className={inputCls} />
+                <label htmlFor="profile-fat-pct" className="mb-1.5 block text-xs text-neutral-400">Fat (% of calories)</label>
+                <input id="profile-fat-pct" type="number" value={form.fatPct} onChange={(e) => setForm({ ...form, fatPct: e.target.value })} className={inputCls} />
               </div>
             </div>
 
@@ -555,12 +559,12 @@ function ProfileModal({
           <h3 className="mb-3 text-sm font-semibold">Weight log</h3>
           <form onSubmit={logWeight} className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="mb-1.5 block text-xs text-neutral-400">Date</label>
-              <input type="date" value={weightDate} onChange={(e) => setWeightDate(e.target.value)} className={inputCls} />
+              <label htmlFor="weight-date" className="mb-1.5 block text-xs text-neutral-400">Date</label>
+              <input id="weight-date" type="date" value={weightDate} onChange={(e) => setWeightDate(e.target.value)} className={inputCls} />
             </div>
             <div className="flex-1">
-              <label className="mb-1.5 block text-xs text-neutral-400">Weight (kg)</label>
-              <input type="number" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="80.0" className={inputCls} />
+              <label htmlFor="weight-kg" className="mb-1.5 block text-xs text-neutral-400">Weight (kg)</label>
+              <input id="weight-kg" type="number" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="80.0" className={inputCls} />
             </div>
             <button type="submit" disabled={loggingWeight} className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors">
               Log
@@ -574,6 +578,7 @@ function ProfileModal({
                   <span className="text-neutral-400">{w.date}</span>
                   <span className="tabular-nums">{w.weightKg} kg</span>
                   <button
+                    type="button"
                     onClick={() => deleteWeight(w.id)}
                     className="rounded px-1.5 py-1 text-xs text-neutral-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
                   >
@@ -594,10 +599,10 @@ function ProfileModal({
 export function NutritionClient({
   initialDay,
   initialTargets,
-}: {
+}: Readonly<{
   initialDay: DailyNutritionTotals;
   initialTargets: NutritionTargets;
-}) {
+}>) {
   const router = useRouter();
   const [day, setDay] = useState(initialDay);
   const [targets, setTargets] = useState(initialTargets);
@@ -671,12 +676,14 @@ export function NutritionClient({
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-300"
           />
           <button
+            type="button"
             onClick={() => setProfileOpen(true)}
             className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
           >
             Profile & Targets
           </button>
           <button
+            type="button"
             onClick={() => setAddMealOpen(true)}
             className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors"
           >
@@ -711,6 +718,7 @@ export function NutritionClient({
                   <span>{round(meal.calories)} kcal</span>
                   <span className="hidden sm:inline">{round(meal.proteinG)}p / {round(meal.carbsG)}c / {round(meal.fatG)}f</span>
                   <button
+                    type="button"
                     onClick={() => deleteMeal(meal.id)}
                     className="rounded px-1.5 py-1 text-neutral-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
                   >

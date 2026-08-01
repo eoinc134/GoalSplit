@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Track your running goals, PBs, and training data.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body className="min-h-screen bg-neutral-950 text-neutral-50 antialiased">

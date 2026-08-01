@@ -19,7 +19,7 @@ interface DashboardPageProps {
   searchParams: Promise<{ strava?: string }>;
 }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+export default async function DashboardPage({ searchParams }: Readonly<DashboardPageProps>) {
   const [{ strava }, stats] = await Promise.all([searchParams, serverFetch<Stats>("/dashboard/stats", STATS_FALLBACK)]);
 
   return (

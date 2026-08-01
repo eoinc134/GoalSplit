@@ -29,7 +29,7 @@ interface RunsPageProps {
   searchParams: Promise<{ type?: string; page?: string }>;
 }
 
-export default async function RunsPage({ searchParams }: RunsPageProps) {
+export default async function RunsPage({ searchParams }: Readonly<RunsPageProps>) {
   const { type = "Run", page: pageStr = "0" } = await searchParams;
   const page = Math.max(0, parseInt(pageStr));
 

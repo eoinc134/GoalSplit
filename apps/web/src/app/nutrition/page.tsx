@@ -30,7 +30,7 @@ interface NutritionPageProps {
   searchParams: Promise<{ date?: string }>;
 }
 
-export default async function NutritionPage({ searchParams }: NutritionPageProps) {
+export default async function NutritionPage({ searchParams }: Readonly<NutritionPageProps>) {
   const { date = todayIso() } = await searchParams;
   const [day, targets] = await Promise.all([fetchDay(date), fetchTargets()]);
   // key={date} forces a remount on date navigation so internal state
