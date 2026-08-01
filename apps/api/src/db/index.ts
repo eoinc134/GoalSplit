@@ -121,6 +121,71 @@ export async function initSchema(): Promise<void> {
     )
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS nutrition_profile (
+      id                    TEXT PRIMARY KEY DEFAULT 'singleton',
+      height_cm             DOUBLE PRECISION,
+      sex                   TEXT,
+      birth_date            TEXT,
+      activity_level        TEXT NOT NULL DEFAULT 'moderate',
+      goal                  TEXT NOT NULL DEFAULT 'maintain',
+      calorie_offset        INTEGER NOT NULL DEFAULT 0,
+      maintenance_override  INTEGER,
+      protein_g_per_kg      DOUBLE PRECISION NOT NULL DEFAULT 1.8,
+      fat_pct               DOUBLE PRECISION NOT NULL DEFAULT 0.25,
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS weight_logs (
+      id         TEXT PRIMARY KEY,
+      date       TEXT NOT NULL UNIQUE,
+      weight_kg  DOUBLE PRECISION NOT NULL,
+      notes      TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_weight_logs_date ON weight_logs (date DESC)
+  `;
+
+  // Cache of USDA foods actually logged, so re-adding a favorite doesn't re-hit
+  // the API and it powers a "recent foods" quick-add list.
+  await sql`
+    CREATE TABLE IF NOT EXISTS foods_cache (
+      fdc_id              TEXT PRIMARY KEY,
+      description         TEXT NOT NULL,
+      brand_owner         TEXT,
+      calories_per_100g   DOUBLE PRECISION NOT NULL,
+      protein_g_per_100g  DOUBLE PRECISION NOT NULL,
+      carbs_g_per_100g    DOUBLE PRECISION NOT NULL,
+      fat_g_per_100g      DOUBLE PRECISION NOT NULL,
+      cached_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS meals (
+      id          TEXT PRIMARY KEY,
+      date        TEXT NOT NULL,
+      meal_type   TEXT NOT NULL DEFAULT 'other',
+      name        TEXT NOT NULL,
+      quantity_g  DOUBLE PRECISION,
+      fdc_id      TEXT REFERENCES foods_cache(fdc_id),
+      calories    DOUBLE PRECISION NOT NULL,
+      protein_g   DOUBLE PRECISION NOT NULL,
+      carbs_g     DOUBLE PRECISION NOT NULL,
+      fat_g       DOUBLE PRECISION NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_meals_date ON meals (date DESC)
+  `;
+
   await seedIfEmpty(sql);
 
   console.log("DB schema ready");

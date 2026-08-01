@@ -138,3 +138,77 @@ export interface PaginatedResponse<T> {
   pageSize: number;
   totalPages: number;
 }
+
+// ── Nutrition ─────────────────────────────────────────────────────────────────
+
+export type Sex = "male" | "female";
+
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
+
+export type NutritionGoal = "cut" | "maintain" | "bulk";
+
+export interface NutritionProfile {
+  heightCm?: number;
+  sex?: Sex;
+  birthDate?: string; // ISO date string
+  activityLevel: ActivityLevel;
+  goal: NutritionGoal;
+  calorieOffset: number; // +/- kcal vs. calculated maintenance
+  maintenanceOverride?: number; // manual kcal override
+  proteinGPerKg: number;
+  fatPct: number; // fraction of target calories from fat, e.g. 0.25
+  updatedAt: string;
+}
+
+export interface NutritionTargets {
+  calculable: boolean;
+  reason?: string; // set when calculable is false
+  maintenanceCalories?: number;
+  targetCalories?: number;
+  targetProteinG?: number;
+  targetCarbsG?: number;
+  targetFatG?: number;
+}
+
+export interface WeightLog {
+  id: string;
+  date: string; // ISO date string
+  weightKg: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack" | "other";
+
+export interface Meal {
+  id: string;
+  date: string; // ISO date string
+  mealType: MealType;
+  name: string;
+  quantityG?: number; // unset for freeform (non-USDA) entries
+  fdcId?: string;
+  calories: number; // scaled totals for the logged quantity, not per-100g
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  createdAt: string;
+}
+
+export interface DailyNutritionTotals {
+  date: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  meals: Meal[];
+}
+
+export interface FoodSearchResult {
+  fdcId: string;
+  description: string;
+  brandOwner?: string;
+  caloriesPer100g: number;
+  proteinGPer100g: number;
+  carbsGPer100g: number;
+  fatGPer100g: number;
+}
