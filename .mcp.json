@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "goalsplit-trainer": {
+      "command": "node",
+      "args": ["C:/ProjectFiles/GoalSplit/apps/mcp-trainer/dist/index.js"],
+      "env": {
+        "GOALSPLIT_API_URL": "http://localhost:3001/api"
+      }
+    }
+  }
+}
