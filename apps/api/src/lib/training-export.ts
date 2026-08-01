@@ -35,42 +35,58 @@ function formatPace(speedMs: number): string {
   return `${m}:${s.toString().padStart(2, "0")}/km`;
 }
 
+type RawDump = Record<string, unknown>;
+
+// Workout type, relative-effort score, and cadence — the short "headline" bits.
+function buildHeaderBits(list: RawDump): string[] {
+  const bits: string[] = [];
+  const workoutLabel = typeof list.workout_type === "number" ? WORKOUT_TYPE_LABELS[list.workout_type] : undefined;
+  if (workoutLabel) bits.push(workoutLabel);
+  if (typeof list.suffer_score === "number") bits.push(`effort ${list.suffer_score}`);
+  if (typeof list.average_cadence === "number") {
+    bits.push(`cadence ${Math.round(list.average_cadence * 2)}spm`);
+  }
+  return bits;
+}
+
+function descriptionLine(detail: RawDump): string | null {
+  const description = typeof detail.description === "string" ? detail.description.trim() : "";
+  return description ? `  "${description}"` : null;
+}
+
+function splitsLine(detail: RawDump): string | null {
+  if (!Array.isArray(detail.splits_metric)) return null;
+  const paces = detail.splits_metric
+    .map((s) => (s && typeof s.average_speed === "number" ? formatPace(s.average_speed) : null))
+    .filter((p): p is string => p !== null);
+  return paces.length > 1 ? `  Splits: ${paces.join(", ")}` : null;
+}
+
+function bestEffortsLine(detail: RawDump): string | null {
+  if (!Array.isArray(detail.best_efforts)) return null;
+  const efforts = detail.best_efforts
+    .map((e) =>
+      e && typeof e.name === "string" && typeof e.elapsed_time === "number"
+        ? `${e.name} in ${formatDuration(e.elapsed_time)}`
+        : null,
+    )
+    .filter((e): e is string => e !== null);
+  return efforts.length > 0 ? `  Best effort: ${efforts.join(", ")}` : null;
+}
+
+// Description, splits, and best efforts — the longer supporting lines.
+function buildExtraLines(detail: RawDump): string[] {
+  return [descriptionLine(detail), splitsLine(detail), bestEffortsLine(detail)].filter(
+    (line): line is string => line !== null,
+  );
+}
+
 // Builds an optional per-activity note from the raw dumps: workout type, Strava's
 // relative-effort score, cadence, splits, best efforts, and any description you
 // wrote on the activity. Returns null when there's nothing beyond the table row.
 function buildActivityNote(activity: ActivityRow, dumps?: ActivityDumpPayloads): string | null {
-  const list = dumps?.list ?? {};
-  const detail = dumps?.detail ?? {};
-
-  const headerBits: string[] = [];
-  if (typeof list.workout_type === "number" && WORKOUT_TYPE_LABELS[list.workout_type]) {
-    headerBits.push(WORKOUT_TYPE_LABELS[list.workout_type]);
-  }
-  if (typeof list.suffer_score === "number") headerBits.push(`effort ${list.suffer_score}`);
-  if (typeof list.average_cadence === "number") {
-    headerBits.push(`cadence ${Math.round(list.average_cadence * 2)}spm`);
-  }
-
-  const extraLines: string[] = [];
-  if (typeof detail.description === "string" && detail.description.trim()) {
-    extraLines.push(`  "${detail.description.trim()}"`);
-  }
-  if (Array.isArray(detail.splits_metric)) {
-    const paces = detail.splits_metric
-      .map((s) => (s && typeof s.average_speed === "number" ? formatPace(s.average_speed) : null))
-      .filter((p): p is string => p !== null);
-    if (paces.length > 1) extraLines.push(`  Splits: ${paces.join(", ")}`);
-  }
-  if (Array.isArray(detail.best_efforts) && detail.best_efforts.length > 0) {
-    const efforts = detail.best_efforts
-      .map((e) =>
-        e && typeof e.name === "string" && typeof e.elapsed_time === "number"
-          ? `${e.name} in ${formatDuration(e.elapsed_time)}`
-          : null,
-      )
-      .filter((e): e is string => e !== null);
-    if (efforts.length > 0) extraLines.push(`  Best effort: ${efforts.join(", ")}`);
-  }
+  const headerBits = buildHeaderBits(dumps?.list ?? {});
+  const extraLines = buildExtraLines(dumps?.detail ?? {});
 
   if (headerBits.length === 0 && extraLines.length === 0) return null;
 
