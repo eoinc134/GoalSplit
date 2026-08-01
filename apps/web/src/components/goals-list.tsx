@@ -3,7 +3,7 @@ import { GOAL_CATEGORY_META } from "@goalsplit/types";
 import { formatTime } from "@/lib/format";
 import { serverFetch } from "@/lib/api";
 
-function GoalRow({ goal }: { goal: Goal }) {
+function GoalRow({ goal }: Readonly<{ goal: Goal }>) {
   const isTime = goal.type === "time";
   const isCompletion = goal.type === "completion";
   const done = goal.status === "completed";

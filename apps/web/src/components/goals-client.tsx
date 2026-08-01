@@ -64,11 +64,11 @@ function formToPayload(form: FormState): Partial<Goal> {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
-function GoalModal({ goal, onClose, onSave }: {
+function GoalModal({ goal, onClose, onSave }: Readonly<{
   goal?: Goal;
   onClose: () => void;
   onSave: (payload: Partial<Goal>, id?: string) => Promise<void>;
-}) {
+}>) {
   const [form, setForm] = useState<FormState>(() => goalToForm(goal));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,14 +112,15 @@ function GoalModal({ goal, onClose, onSave }: {
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{goal ? "Edit Goal" : "Add Goal"}</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
+          <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors text-lg leading-none">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div>
-            <label className="mb-1.5 block text-xs text-neutral-400">Name</label>
+            <label htmlFor="goal-name" className="mb-1.5 block text-xs text-neutral-400">Name</label>
             <input
+              id="goal-name"
               type="text"
               value={form.name}
               onChange={setField("name")}
@@ -132,8 +133,8 @@ function GoalModal({ goal, onClose, onSave }: {
           {/* Category + Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Category</label>
-              <select value={form.category} onChange={setField("category")} className={inputCls}>
+              <label htmlFor="goal-category" className="mb-1.5 block text-xs text-neutral-400">Category</label>
+              <select id="goal-category" value={form.category} onChange={setField("category")} className={inputCls}>
                 {CATEGORY_ORDER.map((cat) => (
                   <option key={cat} value={cat}>
                     {GOAL_CATEGORY_META[cat].icon} {GOAL_CATEGORY_META[cat].label}
@@ -142,8 +143,9 @@ function GoalModal({ goal, onClose, onSave }: {
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Type</label>
+              <label htmlFor="goal-type" className="mb-1.5 block text-xs text-neutral-400">Type</label>
               <select
+                id="goal-type"
                 value={form.type}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, type: e.target.value as GoalType, targetStr: "", currentStr: "" }))
@@ -161,10 +163,11 @@ function GoalModal({ goal, onClose, onSave }: {
           {!isCompletion && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">
+                <label htmlFor="goal-target" className="mb-1.5 block text-xs text-neutral-400">
                   Target {isTime ? "(H:MM:SS)" : `(${form.unit || "value"})`}
                 </label>
                 <input
+                  id="goal-target"
                   type="text"
                   value={form.targetStr}
                   onChange={setField("targetStr")}
@@ -173,10 +176,11 @@ function GoalModal({ goal, onClose, onSave }: {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-neutral-400">
+                <label htmlFor="goal-current" className="mb-1.5 block text-xs text-neutral-400">
                   Current {isTime ? "(H:MM:SS)" : `(${form.unit || "value"})`}
                 </label>
                 <input
+                  id="goal-current"
                   type="text"
                   value={form.currentStr}
                   onChange={setField("currentStr")}
@@ -190,8 +194,9 @@ function GoalModal({ goal, onClose, onSave }: {
           {/* Unit — only for non-time, non-completion */}
           {!isTime && !isCompletion && (
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Unit</label>
+              <label htmlFor="goal-unit" className="mb-1.5 block text-xs text-neutral-400">Unit</label>
               <input
+                id="goal-unit"
                 type="text"
                 value={form.unit}
                 onChange={setField("unit")}
@@ -204,8 +209,8 @@ function GoalModal({ goal, onClose, onSave }: {
           {/* Target date + In focus */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs text-neutral-400">Target Date (optional)</label>
-              <input type="date" value={form.targetDate} onChange={setField("targetDate")} className={inputCls} />
+              <label htmlFor="goal-target-date" className="mb-1.5 block text-xs text-neutral-400">Target Date (optional)</label>
+              <input id="goal-target-date" type="date" value={form.targetDate} onChange={setField("targetDate")} className={inputCls} />
             </div>
             <div className="flex items-end pb-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm select-none">
@@ -246,13 +251,13 @@ function GoalModal({ goal, onClose, onSave }: {
 
 // ── Goal row ──────────────────────────────────────────────────────────────────
 
-function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete }: {
+function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete }: Readonly<{
   goal: Goal;
   onEdit: (goal: Goal) => void;
   onDelete: (id: string) => void;
   onTogglePrioritized: (goal: Goal) => void;
   onToggleComplete: (goal: Goal) => void;
-}) {
+}>) {
   const done = goal.status === "completed";
   const isTime = goal.type === "time";
 
@@ -260,6 +265,7 @@ function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete
     <li className={["group flex items-center gap-3 py-3", done ? "opacity-60" : ""].join(" ")}>
       {/* Prioritize star */}
       <button
+        type="button"
         onClick={() => onTogglePrioritized(goal)}
         title={goal.prioritized ? "Remove from focus" : "Add to focus"}
         className={[
@@ -292,6 +298,7 @@ function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete
       {/* Actions — visible on hover (always visible on mobile) */}
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 sm:opacity-100">
         <button
+          type="button"
           onClick={() => onToggleComplete(goal)}
           title={done ? "Mark as active" : "Mark as complete"}
           className={[
@@ -302,6 +309,7 @@ function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete
           {done ? "↺" : "✓"}
         </button>
         <button
+          type="button"
           onClick={() => onEdit(goal)}
           title="Edit"
           className="rounded px-1.5 py-1 text-xs text-neutral-600 hover:text-neutral-300 transition-colors"
@@ -309,6 +317,7 @@ function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete
           ✏
         </button>
         <button
+          type="button"
           onClick={() => onDelete(goal.id)}
           title="Delete"
           className="rounded px-1.5 py-1 text-xs text-neutral-600 hover:text-red-400 transition-colors"
@@ -322,7 +331,7 @@ function GoalRow({ goal, onEdit, onDelete, onTogglePrioritized, onToggleComplete
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function GoalsClient({ initialGoals }: { initialGoals: Goal[] }) {
+export function GoalsClient({ initialGoals }: Readonly<{ initialGoals: Goal[] }>) {
   const [goals, setGoals] = useState<Goal[]>(initialGoals);
   const [modal, setModal] = useState<{ open: boolean; goal?: Goal }>({ open: false });
   const [pageError, setPageError] = useState<string | null>(null);
@@ -397,6 +406,7 @@ export function GoalsClient({ initialGoals }: { initialGoals: Goal[] }) {
               <span>✏ Edit &nbsp; ✕ Delete</span>
             </div>
             <button
+              type="button"
               onClick={() => setModal({ open: true, goal: undefined })}
               className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors"
             >

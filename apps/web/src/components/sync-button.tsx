@@ -37,6 +37,7 @@ export function SyncButton() {
   return (
     <div className="flex items-center gap-3">
       <button
+        type="button"
         onClick={() => handleSync(false)}
         disabled={busy}
         className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -45,6 +46,7 @@ export function SyncButton() {
       </button>
 
       <button
+        type="button"
         onClick={() => handleSync(true)}
         disabled={busy}
         title="Walks your full Strava history and backfills rich detail (splits, effort, notes) for activities that don't have it yet. May need a couple of clicks if you have a lot of history and hit Strava's rate limit."

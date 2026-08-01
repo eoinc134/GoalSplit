@@ -28,7 +28,7 @@ function pbToEdit(pb: PersonalBest): EditState {
 
 // ── Gap badge ────────────────────────────────────────────────────────────────
 
-function GapBadge({ current, goal }: { current: number; goal: number }) {
+function GapBadge({ current, goal }: Readonly<{ current: number; goal: number }>) {
   const diff = current - goal;
   if (diff <= 0) return <span className="text-xs font-medium text-emerald-400">Goal reached!</span>;
   return <span className="text-xs text-neutral-500">-{formatTime(diff)} to go</span>;
@@ -39,10 +39,10 @@ function GapBadge({ current, goal }: { current: number; goal: number }) {
 function PbRow({
   pb,
   onSave,
-}: {
+}: Readonly<{
   pb: PersonalBest;
   onSave: (id: string, patch: Partial<PersonalBest>) => Promise<void>;
-}) {
+}>) {
   const [editing, setEditing] = useState(false);
   const [edit, setEdit] = useState<EditState>(() => pbToEdit(pb));
   const [saving, setSaving] = useState(false);
@@ -135,6 +135,7 @@ function PbRow({
           <td className="px-5 py-3">
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={save}
                 disabled={saving}
                 className="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50 transition-colors"
@@ -142,6 +143,7 @@ function PbRow({
                 {saving ? "…" : "Save"}
               </button>
               <button
+                type="button"
                 onClick={cancelEdit}
                 className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
               >
@@ -178,6 +180,7 @@ function PbRow({
       </td>
       <td className="px-5 py-4">
         <button
+          type="button"
           onClick={startEdit}
           className="rounded px-2 py-1 text-xs text-neutral-600 opacity-0 transition-all group-hover:opacity-100 hover:text-neutral-300"
         >
@@ -190,7 +193,7 @@ function PbRow({
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function PbsClient({ initialPbs }: { initialPbs: PersonalBest[] }) {
+export function PbsClient({ initialPbs }: Readonly<{ initialPbs: PersonalBest[] }>) {
   const [pbs, setPbs] = useState<PersonalBest[]>(initialPbs);
 
   async function savePb(id: string, patch: Partial<PersonalBest>) {

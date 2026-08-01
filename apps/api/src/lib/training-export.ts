@@ -145,12 +145,14 @@ export function buildTrainingMarkdown(
   const summary = buildTrainingSummary(activities, windowDays, dumps);
   const lines: string[] = [];
 
-  lines.push(`# Training log — last ${windowDays} days`);
-  lines.push("");
-  lines.push(`- Activities: ${summary.activityCount}`);
-  lines.push(`- Total distance: ${summary.totalDistanceKm} km`);
-  lines.push(`- Total moving time: ${formatDuration(summary.totalDurationSec)}`);
-  lines.push(`- Average pace: ${summary.avgPace}`);
+  lines.push(
+    `# Training log — last ${windowDays} days`,
+    "",
+    `- Activities: ${summary.activityCount}`,
+    `- Total distance: ${summary.totalDistanceKm} km`,
+    `- Total moving time: ${formatDuration(summary.totalDurationSec)}`,
+    `- Average pace: ${summary.avgPace}`,
+  );
   if (summary.totalEffort !== undefined) {
     lines.push(`- Total relative effort (Strava): ${summary.totalEffort}`);
   }
@@ -167,8 +169,10 @@ export function buildTrainingMarkdown(
     return lines.join("\n");
   }
 
-  lines.push("| Date | Type | Distance | Time | Pace | Elevation | Avg HR |");
-  lines.push("| --- | --- | --- | --- | --- | --- | --- |");
+  lines.push(
+    "| Date | Type | Distance | Time | Pace | Elevation | Avg HR |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+  );
   for (const a of activities) {
     const date = new Date(a.start_date_local).toISOString().slice(0, 10);
     const distanceKm = (a.distance / 1000).toFixed(2);
@@ -184,12 +188,9 @@ export function buildTrainingMarkdown(
     .filter((n): n is string => n !== null);
 
   if (notes.length > 0) {
-    lines.push("");
-    lines.push("## Notes");
-    lines.push("");
+    lines.push("", "## Notes", "");
     for (const note of notes) {
-      lines.push(note);
-      lines.push("");
+      lines.push(note, "");
     }
   }
 
