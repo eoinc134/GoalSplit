@@ -45,13 +45,28 @@ function makeActivity(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const LOW_USAGE = { usage: { fifteenMin: 1, daily: 1 }, limit: { fifteenMin: 100, daily: 1000 } };
+const LOW_USAGE = { fifteenMin: 1, daily: 1 };
+const LIMIT = { fifteenMin: 100, daily: 1000 };
+
+// Queues one activity page from `fetchActivities`, with an optional rate-usage override.
+function mockActivitiesPage(usage: { fifteenMin: number; daily: number } = LOW_USAGE) {
+  mockFetchActivities.mockResolvedValueOnce({ activities: [makeActivity()], usage, limit: LIMIT });
+}
+
+// Queues successive `sql` resolved values in call order — each array is one call's row set.
+function queueSql(...responses: unknown[][]) {
+  for (const response of responses) mockSql.mockResolvedValueOnce(response);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetToken.mockResolvedValue("token-abc");
-  mockFetchActivityDetail.mockResolvedValue({ detail: {}, ...LOW_USAGE });
-  mockFetchActivityStreams.mockResolvedValue({ streams: { time: { data: [0, 1, 2] } }, ...LOW_USAGE });
+  mockFetchActivityDetail.mockResolvedValue({ detail: {}, usage: LOW_USAGE, limit: LIMIT });
+  mockFetchActivityStreams.mockResolvedValue({
+    streams: { time: { data: [0, 1, 2] } },
+    usage: LOW_USAGE,
+    limit: LIMIT,
+  });
 });
 
 describe("syncActivities", () => {
@@ -61,15 +76,9 @@ describe("syncActivities", () => {
   });
 
   it("fetches and stores detail and streams dumps for newly-inserted activities", async () => {
-    mockSql.mockResolvedValueOnce([{ last_ts: null }]); // getLastActivityTimestamp
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: true }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
-    mockSql.mockResolvedValueOnce([]); // insertDump: detail
-    mockSql.mockResolvedValueOnce([]); // insertDump: streams
+    // getLastActivityTimestamp, upsertActivity, insertDump(list), insertDump(detail), insertDump(streams)
+    queueSql([{ last_ts: null }], [{ id: "act-1", inserted: true }], [], [], []);
+    mockActivitiesPage();
 
     const result = await syncActivities("user-1");
 
@@ -79,13 +88,9 @@ describe("syncActivities", () => {
   });
 
   it("does not fetch detail or streams for activities already in the DB", async () => {
-    mockSql.mockResolvedValueOnce([{ last_ts: null }]);
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: false }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
+    // getLastActivityTimestamp, upsertActivity, insertDump(list)
+    queueSql([{ last_ts: null }], [{ id: "act-1", inserted: false }], []);
+    mockActivitiesPage();
 
     await syncActivities("user-1");
 
@@ -94,34 +99,27 @@ describe("syncActivities", () => {
   });
 
   it("does not store a streams dump when Strava has no streams for the activity", async () => {
-    mockSql.mockResolvedValueOnce([{ last_ts: null }]);
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: true }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
-    mockSql.mockResolvedValueOnce([]); // insertDump: detail
-    mockFetchActivityStreams.mockResolvedValueOnce({ streams: null, ...LOW_USAGE });
+    // getLastActivityTimestamp, upsertActivity, insertDump(list), insertDump(detail) — no insertDump(streams)
+    queueSql([{ last_ts: null }], [{ id: "act-1", inserted: true }], [], []);
+    mockActivitiesPage();
+    mockFetchActivityStreams.mockResolvedValueOnce({ streams: null, usage: LOW_USAGE, limit: LIMIT });
 
     await syncActivities("user-1");
 
-    // getLastActivityTimestamp + upsertActivity + insertDump(list) + insertDump(detail) —
-    // no insertDump(streams) call since Strava returned no streams.
     expect(mockSql).toHaveBeenCalledTimes(4);
   });
 
   it("full backfill ignores the last-synced cursor and backfills missing detail/streams dumps", async () => {
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: false }]); // upsertActivity (already existed)
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
-    mockSql.mockResolvedValueOnce([{ exists: false }]); // hasDump: detail
-    mockSql.mockResolvedValueOnce([]); // insertDump: detail
-    mockSql.mockResolvedValueOnce([{ exists: false }]); // hasDump: streams
-    mockSql.mockResolvedValueOnce([]); // insertDump: streams
+    // upsertActivity, insertDump(list), hasDump(detail), insertDump(detail), hasDump(streams), insertDump(streams)
+    queueSql(
+      [{ id: "act-1", inserted: false }],
+      [],
+      [{ exists: false }],
+      [],
+      [{ exists: false }],
+      [],
+    );
+    mockActivitiesPage();
 
     await syncActivities("user-1", { full: true });
 
@@ -136,14 +134,9 @@ describe("syncActivities", () => {
   });
 
   it("full backfill does not re-fetch dumps that are already stored", async () => {
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: false }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
-    mockSql.mockResolvedValueOnce([{ exists: true }]); // hasDump: detail
-    mockSql.mockResolvedValueOnce([{ exists: true }]); // hasDump: streams
+    // upsertActivity, insertDump(list), hasDump(detail)=true, hasDump(streams)=true
+    queueSql([{ id: "act-1", inserted: false }], [], [{ exists: true }], [{ exists: true }]);
+    mockActivitiesPage();
 
     await syncActivities("user-1", { full: true });
 
@@ -152,14 +145,9 @@ describe("syncActivities", () => {
   });
 
   it("skips detail and streams fetches once the 15-minute rate budget is nearly exhausted", async () => {
-    mockSql.mockResolvedValueOnce([{ last_ts: null }]);
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      usage: { fifteenMin: 85, daily: 85 },
-      limit: { fifteenMin: 100, daily: 1000 },
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: true }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
+    // getLastActivityTimestamp, upsertActivity, insertDump(list)
+    queueSql([{ last_ts: null }], [{ id: "act-1", inserted: true }], []);
+    mockActivitiesPage({ fifteenMin: 85, daily: 85 });
 
     await syncActivities("user-1");
 
@@ -168,19 +156,14 @@ describe("syncActivities", () => {
   });
 
   it("skips the streams fetch when the detail fetch alone exhausts the rate budget", async () => {
-    mockSql.mockResolvedValueOnce([{ last_ts: null }]);
-    mockFetchActivities.mockResolvedValueOnce({
-      activities: [makeActivity()],
-      ...LOW_USAGE,
-    });
-    mockSql.mockResolvedValueOnce([{ id: "act-1", inserted: true }]); // upsertActivity
-    mockSql.mockResolvedValueOnce([]); // insertDump: list
+    // getLastActivityTimestamp, upsertActivity, insertDump(list), insertDump(detail)
+    queueSql([{ last_ts: null }], [{ id: "act-1", inserted: true }], [], []);
+    mockActivitiesPage();
     mockFetchActivityDetail.mockResolvedValueOnce({
       detail: {},
       usage: { fifteenMin: 90, daily: 90 },
-      limit: { fifteenMin: 100, daily: 1000 },
+      limit: LIMIT,
     });
-    mockSql.mockResolvedValueOnce([]); // insertDump: detail
 
     await syncActivities("user-1");
 
