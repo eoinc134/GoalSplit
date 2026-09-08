@@ -33,16 +33,7 @@ dashboardRouter.get("/stats", async (_req, res) => {
     weeklyDistance = Math.round((weekStats?.weekly_distance ?? 0) / 100) / 10;
   }
 
-  const [goalStats] = await sql<{ active: number; prioritized: number }[]>`
-    SELECT
-      COUNT(*) FILTER (WHERE status = 'active')::INTEGER                        AS active,
-      COUNT(*) FILTER (WHERE status = 'active' AND prioritized = true)::INTEGER AS prioritized
-    FROM goals
-  `;
-  const activeGoals = goalStats?.active ?? 0;
-  const prioritizedGoals = goalStats?.prioritized ?? 0;
-
   return res.json({
-    data: { totalRuns, totalDistance, weeklyDistance, activeGoals, prioritizedGoals },
+    data: { totalRuns, totalDistance, weeklyDistance },
   });
 });

@@ -3,8 +3,8 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GoalSplit — Running Dashboard",
-  description: "Track your running goals, PBs, and training data.",
+  title: "GoalSplit — Training Analytics",
+  description: "Strava-backed training data and performance analytics.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -18,10 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </span>
             <div className="flex gap-6 text-sm text-neutral-400">
               <Link href="/" className="hover:text-neutral-50 transition-colors">Dashboard</Link>
-              <Link href="/goals" className="hover:text-neutral-50 transition-colors">Goals</Link>
               <Link href="/runs" className="hover:text-neutral-50 transition-colors">Activities</Link>
-              <Link href="/pbs" className="hover:text-neutral-50 transition-colors">PBs</Link>
-              <Link href="/nutrition" className="hover:text-neutral-50 transition-colors">Nutrition</Link>
             </div>
           </div>
         </nav>

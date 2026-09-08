@@ -1,6 +1,8 @@
 # GoalSplit
 
-A personal running dashboard for tracking goals, personal bests, training history, Strava activities, and nutrition/macros.
+A sports data science project built on my own Strava training data — syncing activities,
+exporting training logs for LLM-assisted coaching, and (in progress) training load and
+performance-trend analytics.
 
 ## Stack
 
@@ -42,9 +44,7 @@ cp apps/api/.env.example apps/api/.env
 ```
 
 Fill in your Strava credentials in `apps/api/.env` (see [Strava integration](#strava-integration)
-below) and, if you want food search on the Nutrition page, a USDA API key (see
-[Nutrition tracking](#nutrition-tracking)). All other values are pre-filled for the local
-Docker setup.
+below). All other values are pre-filled for the local Docker setup.
 
 **3. Start the database:**
 
@@ -54,7 +54,7 @@ Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 docker compose up -d
 ```
 
-This starts PostgreSQL on **port 5433** (5432 is left free for any locally installed PostgreSQL). The schema and seed data are created automatically when the API first starts.
+This starts PostgreSQL on **port 5433** (5432 is left free for any locally installed PostgreSQL). The schema is created automatically when the API first starts.
 
 **4. Start all apps:**
 
@@ -95,24 +95,7 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/activities/export` | Recent training log for Claude (`?days=30&type=Run&format=markdown`) |
 | `POST` | `/api/activities/sync` | Sync latest activities from Strava |
 | `POST` | `/api/activities/sync?full=true` | Backfill: walk full Strava history, fill in missing detail dumps |
-| `GET` | `/api/goals` | List all goals |
-| `POST` | `/api/goals` | Create a goal |
-| `PATCH` | `/api/goals/:id` | Update a goal |
-| `DELETE` | `/api/goals/:id` | Delete a goal |
-| `GET` | `/api/pbs` | List personal bests |
-| `PATCH` | `/api/pbs/:id` | Update a personal best |
 | `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
-| `GET` | `/api/nutrition/profile` | Get your nutrition profile |
-| `PATCH` | `/api/nutrition/profile` | Update height/sex/birth date/activity level/goal/etc. |
-| `GET` | `/api/nutrition/targets` | Calculated maintenance/target calories + macro targets |
-| `GET` | `/api/nutrition/weight` | Weight log history (`?limit=90`) |
-| `POST` | `/api/nutrition/weight` | Log a weigh-in (upserts by date) |
-| `DELETE` | `/api/nutrition/weight/:id` | Delete a weigh-in |
-| `GET` | `/api/nutrition/meals` | Meals + totals for a day (`?date=YYYY-MM-DD`, defaults today) |
-| `POST` | `/api/nutrition/meals` | Log a meal (from USDA search pick or freeform macros) |
-| `DELETE` | `/api/nutrition/meals/:id` | Delete a meal |
-| `GET` | `/api/nutrition/foods/search` | Search USDA FoodData Central (`?q=chicken+breast`) |
-| `GET` | `/api/nutrition/foods/recent` | Recently-logged foods, for quick re-add |
 
 ## Training data → Claude
 
@@ -160,55 +143,15 @@ an optional `days` and `type` filter. For iterating on the server itself, swap t
 `command`/`args` for `npx` / `["tsx", ".../apps/mcp-trainer/src/index.ts"]` to run from
 source without a build step.
 
-## Nutrition tracking
+## Roadmap
 
-The **Nutrition** page tracks daily macros (carbs/protein/fat) against calculated targets,
-backed by a body profile and a weight-log history.
+Sports-data-science direction, in progress:
 
-### Set up food search
-
-Meal search uses [USDA FoodData Central](https://fdc.nal.usda.gov/). Get a free instant API
-key at [fdc.nal.usda.gov/api-key-signup.html](https://fdc.nal.usda.gov/api-key-signup.html)
-and set it in `apps/api/.env`:
-
-```env
-USDA_API_KEY=your_key
-```
-
-Without a key, food search still works against the shared `DEMO_KEY`, but it's tightly
-rate-limited — get your own key before relying on it day to day.
-
-### How targets are calculated
-
-Open **Profile & Targets** on the Nutrition page and fill in height, sex, birth date, and
-activity level, then log a weigh-in — targets need both a profile and at least one weigh-in
-to compute. From there (`apps/api/src/lib/nutrition-calc.ts`):
-
-- **Maintenance calories** = BMR (Mifflin-St Jeor, using your latest weigh-in) × an activity
-  multiplier (sedentary 1.2 → very active 1.9). Set **Maintenance override** to use a known
-  number instead of the calculated one.
-- **Target calories** = maintenance + **Calorie offset** (negative for a cut, positive for a
-  bulk, 0 to maintain).
-- **Macros**: protein is grams-per-kg-bodyweight (default 1.8g/kg) × your latest weight; fat
-  is a percentage of target calories (default 25%); carbs fill whatever's left.
-
-Weight is a dated log, not a single field — each entry updates the same day if you log twice
-(`POST /api/nutrition/weight` upserts by date), and the *latest* entry feeds the BMR calc.
-
-### Logging meals
-
-**Add Meal** has two modes:
-
-- **Search food** — searches USDA FoodData Central, pick a result, enter a quantity in
-  **grams** (USDA nutrient values are per-100g consistently across food types, so grams
-  avoids ambiguous serving-size math), and macros scale automatically. Every food you log
-  gets cached locally (`foods_cache` table) so it shows up as a quick re-add without hitting
-  USDA again.
-- **Manual entry** — type calories/protein/carbs/fat directly, for homemade meals with no
-  USDA match.
-
-Not built yet: folding Strava activity calorie burn into the maintenance calculation, and
-the Claude-coaching layer on top of this data (tracked separately).
+- **Training load** — acute:chronic workload ratio and similar load metrics derived from
+  synced activity volume/intensity.
+- **Performance trends** — pace, heart rate, and effort trends over time, segmented by
+  activity type and distance.
+- A Claude-coaching layer on top of the training-export data (tracked separately).
 
 ## Deployment (Railway)
 
@@ -229,7 +172,6 @@ STRAVA_CLIENT_ID      → your Strava app client ID
 STRAVA_CLIENT_SECRET  → your Strava app secret
 STRAVA_REDIRECT_URI   → https://<api-domain>.railway.app/api/auth/strava/callback
 FRONTEND_URL          → https://<web-domain>.railway.app
-USDA_API_KEY          → your USDA FoodData Central key (optional — falls back to DEMO_KEY)
 ```
 
 ### Web service

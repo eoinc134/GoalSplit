@@ -1,5 +1,4 @@
 import postgres from "postgres";
-import { seedIfEmpty } from "./seed.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL env var is not set");
@@ -87,106 +86,6 @@ export async function initSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_activity_dumps_activity
       ON activity_dumps (activity_id, fetched_at DESC)
   `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS goals (
-      id            TEXT PRIMARY KEY,
-      name          TEXT NOT NULL,
-      description   TEXT,
-      category      TEXT NOT NULL,
-      type          TEXT NOT NULL,
-      target_value  DOUBLE PRECISION NOT NULL,
-      current_value DOUBLE PRECISION NOT NULL DEFAULT 0,
-      unit          TEXT NOT NULL,
-      target_date   TEXT,
-      status        TEXT NOT NULL DEFAULT 'active',
-      prioritized   BOOLEAN NOT NULL DEFAULT false,
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS personal_bests (
-      id             TEXT PRIMARY KEY,
-      distance       DOUBLE PRECISION NOT NULL,
-      distance_label TEXT NOT NULL,
-      time           INTEGER NOT NULL,
-      pace           INTEGER NOT NULL,
-      goal_time      INTEGER,
-      goal_pace      INTEGER,
-      date           TEXT NOT NULL,
-      run_id         TEXT,
-      notes          TEXT
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS nutrition_profile (
-      id                    TEXT PRIMARY KEY DEFAULT 'singleton',
-      height_cm             DOUBLE PRECISION,
-      sex                   TEXT,
-      birth_date            TEXT,
-      activity_level        TEXT NOT NULL DEFAULT 'moderate',
-      goal                  TEXT NOT NULL DEFAULT 'maintain',
-      calorie_offset        INTEGER NOT NULL DEFAULT 0,
-      maintenance_override  INTEGER,
-      protein_g_per_kg      DOUBLE PRECISION NOT NULL DEFAULT 1.8,
-      fat_pct               DOUBLE PRECISION NOT NULL DEFAULT 0.25,
-      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS weight_logs (
-      id         TEXT PRIMARY KEY,
-      date       TEXT NOT NULL UNIQUE,
-      weight_kg  DOUBLE PRECISION NOT NULL,
-      notes      TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE INDEX IF NOT EXISTS idx_weight_logs_date ON weight_logs (date DESC)
-  `;
-
-  // Cache of USDA foods actually logged, so re-adding a favorite doesn't re-hit
-  // the API and it powers a "recent foods" quick-add list.
-  await sql`
-    CREATE TABLE IF NOT EXISTS foods_cache (
-      fdc_id              TEXT PRIMARY KEY,
-      description         TEXT NOT NULL,
-      brand_owner         TEXT,
-      calories_per_100g   DOUBLE PRECISION NOT NULL,
-      protein_g_per_100g  DOUBLE PRECISION NOT NULL,
-      carbs_g_per_100g    DOUBLE PRECISION NOT NULL,
-      fat_g_per_100g      DOUBLE PRECISION NOT NULL,
-      cached_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS meals (
-      id          TEXT PRIMARY KEY,
-      date        TEXT NOT NULL,
-      meal_type   TEXT NOT NULL DEFAULT 'other',
-      name        TEXT NOT NULL,
-      quantity_g  DOUBLE PRECISION,
-      fdc_id      TEXT REFERENCES foods_cache(fdc_id),
-      calories    DOUBLE PRECISION NOT NULL,
-      protein_g   DOUBLE PRECISION NOT NULL,
-      carbs_g     DOUBLE PRECISION NOT NULL,
-      fat_g       DOUBLE PRECISION NOT NULL,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE INDEX IF NOT EXISTS idx_meals_date ON meals (date DESC)
-  `;
-
-  await seedIfEmpty(sql);
 
   console.log("DB schema ready");
 }
