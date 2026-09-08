@@ -107,12 +107,9 @@ Sync) walks your full Strava history to fill in `detail` dumps for activities sy
 before this existed — click it again after the 15-minute Strava rate limit resets if it
 didn't finish in one pass.
 
-### Manual export
-
-The **Runs** page has an export control next to Sync: pick a window (7/30/90 days) and
-either **Copy for Claude** (copies a markdown training log to your clipboard — paste it
-into any Claude conversation) or **Download .md**. Same data is available directly via
-`GET /api/activities/export?days=30&format=markdown`.
+The training log itself is available directly via
+`GET /api/activities/export?days=30&format=markdown` (or `format=json`) — no UI for it,
+consumed by the MCP server below.
 
 ### Live access via MCP
 

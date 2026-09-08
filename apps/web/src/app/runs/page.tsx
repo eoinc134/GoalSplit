@@ -1,5 +1,4 @@
 import { SyncButton } from "@/components/sync-button";
-import { ExportButton } from "@/components/export-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
 import { API_URL } from "@/lib/api";
 import { ACTIVITY_TYPE_ICON, ACTIVITY_FILTERS } from "@/lib/constants";
@@ -50,7 +49,6 @@ export default async function RunsPage({ searchParams }: Readonly<RunsPageProps>
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <ExportButton />
           <SyncButton />
         </div>
       </div>
