@@ -1,8 +1,8 @@
 # GoalSplit
 
 A sports data science project built on my own Strava training data — syncing activities,
-exporting training logs for LLM-assisted coaching, and (in progress) training load and
-performance-trend analytics.
+exporting training logs for LLM-assisted coaching, and computing training load (ACWR) and
+performance trends.
 
 ## Stack
 
@@ -96,6 +96,8 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `POST` | `/api/activities/sync` | Sync latest activities from Strava |
 | `POST` | `/api/activities/sync?full=true` | Backfill: walk full Strava history, fill in missing detail/streams dumps |
 | `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
+| `GET` | `/api/training/load` | ACWR + 28-day daily training-load series |
+| `GET` | `/api/training/trends` | Weekly volume-by-type + Run pace (`?weeks=1-52`, default 12) |
 
 ## Training data → Claude
 
@@ -145,14 +147,34 @@ an optional `days` and `type` filter. For iterating on the server itself, swap t
 `command`/`args` for `npx` / `["tsx", ".../apps/mcp-trainer/src/index.ts"]` to run from
 source without a build step.
 
+## Training load & performance trends
+
+The **Training** page (`/training`) computes training load and volume/pace trends
+straight from data that's already synced — no separate ingestion step, no backfill wait.
+
+- **Training load (ACWR)** — acute:chronic workload ratio built from Strava's own
+  `suffer_score` (Relative Effort), already captured in every activity's `list` dump.
+  Acute = trailing 7 days, chronic = trailing 28 days, both including rest days as
+  explicit zero-load so the average isn't skewed. Bands: `<0.8` undertraining,
+  `0.8–1.3` sweet spot, `1.3–1.5` caution, `≥1.5` high injury risk (Gabbett/Hulin).
+  Needs at least 28 days of synced history before showing a reading, and surfaces a
+  `coveragePct` warning when a lot of activities in the window have no `suffer_score`
+  (e.g. HR-less indoor rides).
+- **Performance trends** — weekly training volume by activity type, and weekly average
+  Run pace, over a configurable window (`?weeks=`, default 12, max 52).
+
+Both are computed on the fly (`apps/api/src/lib/training-load.ts`,
+`apps/api/src/routes/training.ts`) from the `activities` table and `list` dumps — no
+materialized table, no cron job; the dataset is one person's activity history. HR-zone
+time, grade-adjusted pace, HR drift, and power curves are a later phase, waiting on the
+`streams` backfill (above) and Strava's `/athlete/zones` (not ingested yet).
+
 ## Roadmap
 
-Sports-data-science direction, in progress:
+Sports-data-science direction, next up:
 
-- **Training load** — acute:chronic workload ratio and similar load metrics derived from
-  synced activity volume/intensity.
-- **Performance trends** — pace, heart rate, and effort trends over time, segmented by
-  activity type and distance.
+- **Phase 2 analytics** — HR-zone time, grade-adjusted pace, HR drift, power curves,
+  once the `streams` backfill is complete and Strava's `/athlete/zones` is ingested.
 - A Claude-coaching layer on top of the training-export data (tracked separately).
 
 ## Deployment (Railway)

@@ -19,6 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <div className="flex gap-6 text-sm text-neutral-400">
               <Link href="/" className="hover:text-neutral-50 transition-colors">Dashboard</Link>
               <Link href="/runs" className="hover:text-neutral-50 transition-colors">Activities</Link>
+              <Link href="/training" className="hover:text-neutral-50 transition-colors">Training</Link>
             </div>
           </div>
         </nav>
