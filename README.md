@@ -94,18 +94,23 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/activities` | List synced activities (`?type=Run&limit=50`) |
 | `GET` | `/api/activities/export` | Recent training log for Claude (`?days=30&type=Run&format=markdown`) |
 | `POST` | `/api/activities/sync` | Sync latest activities from Strava |
-| `POST` | `/api/activities/sync?full=true` | Backfill: walk full Strava history, fill in missing detail dumps |
+| `POST` | `/api/activities/sync?full=true` | Backfill: walk full Strava history, fill in missing detail/streams dumps |
 | `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
 
 ## Training data → Claude
 
-Every synced activity gets two raw payloads dumped into an append-only `activity_dumps`
-table (see `apps/api/src/db/index.ts`): the cheap `list` payload from every sync, and a
-richer one-time `detail` payload (splits, best efforts, relative effort, your run notes)
-fetched once per activity and cached forever. The **Backfill History** button (next to
-Sync) walks your full Strava history to fill in `detail` dumps for activities synced
-before this existed — click it again after the 15-minute Strava rate limit resets if it
-didn't finish in one pass.
+Every synced activity gets raw payloads dumped into an append-only `activity_dumps` table
+(see `apps/api/src/db/index.ts`): the cheap `list` payload from every sync, and two richer
+one-time payloads fetched once per activity and cached forever — `detail` (splits, best
+efforts, relative effort, your run notes) and `streams` (full time-series: heartrate, pace,
+altitude, cadence, watts, grade, GPS — at native resolution, whatever Strava has for that
+activity). The **Backfill History** button (next to Sync) walks your full Strava history to
+fill in `detail`/`streams` dumps for activities synced before they existed — click it again
+after the 15-minute Strava rate limit resets if it didn't finish in one pass.
+
+`streams` isn't surfaced anywhere yet (training-export intentionally excludes it — see
+`apps/api/src/routes/activities.ts`) — it's ingestion ahead of the training-load/
+performance-trend analytics work.
 
 The training log itself is available directly via
 `GET /api/activities/export?days=30&format=markdown` (or `format=json`) — no UI for it,

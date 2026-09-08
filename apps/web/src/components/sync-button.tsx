@@ -49,7 +49,7 @@ export function SyncButton() {
         type="button"
         onClick={() => handleSync(true)}
         disabled={busy}
-        title="Walks your full Strava history and backfills rich detail (splits, effort, notes) for activities that don't have it yet. May need a couple of clicks if you have a lot of history and hit Strava's rate limit."
+        title="Walks your full Strava history and backfills rich detail (splits, effort, notes) and time-series streams (HR, pace, elevation) for activities that don't have them yet. May need a couple of clicks if you have a lot of history and hit Strava's rate limit."
         className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-500 transition-colors hover:border-neutral-600 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {state === "backfilling" ? "Backfilling..." : "Backfill History"}

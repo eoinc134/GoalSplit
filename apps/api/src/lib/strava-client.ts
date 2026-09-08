@@ -47,6 +47,28 @@ export interface StravaActivityResponse {
 // and Strava adds fields over time — we store it as-is rather than typing every key.
 export type StravaActivityDetail = Record<string, unknown>;
 
+// All stream types Strava's activity-streams endpoint can return. Requesting a
+// type an activity doesn't have (e.g. `watts` with no power meter) just omits
+// that key from the response rather than erroring.
+export const STREAM_KEYS = [
+  "time",
+  "distance",
+  "latlng",
+  "altitude",
+  "velocity_smooth",
+  "heartrate",
+  "cadence",
+  "watts",
+  "temp",
+  "moving",
+  "grade_smooth",
+] as const;
+
+// Response shape with key_by_type=true: an object keyed by stream type, each
+// holding { data, series_type, original_size, resolution }. Stored as-is, same
+// rationale as StravaActivityDetail — only present keys are the ones Strava has.
+export type StravaStreamSet = Record<string, unknown>;
+
 export interface RateLimit {
   fifteenMin: number;
   daily: number;
@@ -159,4 +181,35 @@ export async function fetchActivityDetail(
     usage: parseRateHeader(res.headers.get("X-RateLimit-Usage"), [0, 0]),
     limit: parseRateHeader(res.headers.get("X-RateLimit-Limit"), [100, 1000]),
   };
+}
+
+export interface FetchActivityStreamsResult {
+  // null when Strava has no streams for this activity at all (404) — manual
+  // entries and some indoor/no-GPS activities have no time-series data.
+  streams: StravaStreamSet | null;
+  usage: RateLimit;
+  limit: RateLimit;
+}
+
+export async function fetchActivityStreams(
+  accessToken: string,
+  stravaId: number,
+): Promise<FetchActivityStreamsResult> {
+  const params = new URLSearchParams({
+    keys: STREAM_KEYS.join(","),
+    key_by_type: "true",
+  });
+
+  const res = await fetch(`${STRAVA_API}/activities/${stravaId}/streams?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  const usage = parseRateHeader(res.headers.get("X-RateLimit-Usage"), [0, 0]);
+  const limit = parseRateHeader(res.headers.get("X-RateLimit-Limit"), [100, 1000]);
+
+  if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+  if (res.status === 404) return { streams: null, usage, limit };
+  if (!res.ok) throw new Error(`Strava streams fetch failed: ${res.status}`);
+
+  return { streams: (await res.json()) as StravaStreamSet, usage, limit };
 }

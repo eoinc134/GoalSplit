@@ -3,6 +3,7 @@ import { sql } from "../db/index.js";
 import {
   fetchActivities,
   fetchActivityDetail,
+  fetchActivityStreams,
   type StravaActivityResponse,
 } from "../lib/strava-client.js";
 import { getValidAccessToken } from "./token.service.js";
@@ -45,10 +46,12 @@ async function upsertActivity(
   return row;
 }
 
-async function hasDetailDump(activityId: string): Promise<boolean> {
+type DumpSource = "detail" | "streams";
+
+async function hasDump(activityId: string, source: DumpSource): Promise<boolean> {
   const [row] = await sql<{ exists: boolean }[]>`
     SELECT EXISTS(
-      SELECT 1 FROM activity_dumps WHERE activity_id = ${activityId} AND source = 'detail'
+      SELECT 1 FROM activity_dumps WHERE activity_id = ${activityId} AND source = ${source}
     ) AS exists
   `;
   return row?.exists ?? false;
@@ -58,7 +61,7 @@ async function hasDetailDump(activityId: string): Promise<boolean> {
 async function insertDump(
   activityId: string,
   stravaId: number,
-  source: "list" | "detail",
+  source: "list" | DumpSource,
   payload: unknown,
 ): Promise<void> {
   await sql`
@@ -71,10 +74,15 @@ async function insertDump(
 // We stop making further requests once we've used ≥80% of the 15-minute read quota.
 const RATE_LIMIT_SAFE_THRESHOLD = 0.8;
 
+function rateFractionFrom(usage: { fifteenMin: number }, limit: { fifteenMin: number }): number {
+  return limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
+}
+
 // Upserts one activity, always dumping its list payload, and dumps the richer
-// detail payload too when it's missing — either because the activity is brand
-// new, or (during a full backfill) because it predates this feature — as long
-// as there's rate-limit headroom. Returns the rate fraction observed afterwards.
+// detail payload and full time-series streams too when missing — either
+// because the activity is brand new, or (during a full backfill) because it
+// predates these dumps — as long as there's rate-limit headroom for each.
+// Returns the rate fraction observed afterwards.
 async function syncOneActivity(
   userId: string,
   accessToken: string,
@@ -85,12 +93,23 @@ async function syncOneActivity(
   const { id, inserted } = await upsertActivity(userId, act);
   await insertDump(id, act.id, "list", act);
 
-  const needsDetail = inserted || (full && !(await hasDetailDump(id)));
-  if (!needsDetail || rateFraction >= RATE_LIMIT_SAFE_THRESHOLD) return rateFraction;
+  const needsDetail = inserted || (full && !(await hasDump(id, "detail")));
+  if (needsDetail && rateFraction < RATE_LIMIT_SAFE_THRESHOLD) {
+    const { detail, usage, limit } = await fetchActivityDetail(accessToken, act.id);
+    await insertDump(id, act.id, "detail", detail);
+    rateFraction = rateFractionFrom(usage, limit);
+  }
 
-  const { detail, usage, limit } = await fetchActivityDetail(accessToken, act.id);
-  await insertDump(id, act.id, "detail", detail);
-  return limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
+  const needsStreams = inserted || (full && !(await hasDump(id, "streams")));
+  if (needsStreams && rateFraction < RATE_LIMIT_SAFE_THRESHOLD) {
+    const { streams, usage, limit } = await fetchActivityStreams(accessToken, act.id);
+    if (streams && Object.keys(streams).length > 0) {
+      await insertDump(id, act.id, "streams", streams);
+    }
+    rateFraction = rateFractionFrom(usage, limit);
+  }
+
+  return rateFraction;
 }
 
 export interface SyncOptions {
@@ -116,7 +135,7 @@ export async function syncActivities(userId: string, options: SyncOptions = {}):
       page,
       perPage: 200,
     });
-    rateFraction = limit.fifteenMin > 0 ? usage.fifteenMin / limit.fifteenMin : 0;
+    rateFraction = rateFractionFrom(usage, limit);
 
     for (const act of activities) {
       rateFraction = await syncOneActivity(userId, accessToken, act, rateFraction, options.full ?? false);

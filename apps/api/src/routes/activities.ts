@@ -69,12 +69,14 @@ async function fetchDumpsForActivities(
 ): Promise<Record<string, ActivityDumpPayloads>> {
   if (activityIds.length === 0) return {};
 
+  // Excludes 'streams' — those payloads can be large and aren't used by the
+  // markdown/JSON training export, only by future time-series analytics.
   const rows = await sql<
     { activity_id: string; source: "list" | "detail"; payload: Record<string, unknown> }[]
   >`
     SELECT DISTINCT ON (activity_id, source) activity_id, source, payload
     FROM activity_dumps
-    WHERE activity_id = ANY(${activityIds})
+    WHERE activity_id = ANY(${activityIds}) AND source IN ('list', 'detail')
     ORDER BY activity_id, source, fetched_at DESC
   `;
 
