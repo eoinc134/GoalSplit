@@ -4,6 +4,7 @@ import {
   formatPace,
   formatDate,
   paceFromSpeed,
+  toSeconds,
 } from "./format";
 
 describe("formatTime", () => {
@@ -41,4 +42,18 @@ describe("paceFromSpeed", () => {
     expect(paceFromSpeed(1000 / 375)).toBe("6:15/km"));
   it("converts 6 min/km speed correctly", () =>
     expect(paceFromSpeed(1000 / 360)).toBe("6:00/km"));
+});
+
+describe("toSeconds", () => {
+  it("parses M:SS", () => expect(toSeconds("19:58")).toBe(1198));
+  it("parses H:MM:SS", () => expect(toSeconds("3:32:10")).toBe(12730));
+  it("trims surrounding whitespace", () => expect(toSeconds("  9:59 ")).toBe(599));
+  it("rejects a single number with no colon", () => expect(toSeconds("1198")).toBeNull());
+  it("rejects non-numeric parts", () => expect(toSeconds("ab:cd")).toBeNull());
+  it("rejects minutes or seconds of 60 or more, matching formatTime's own output range", () => {
+    expect(toSeconds("1:60")).toBeNull();
+    expect(toSeconds("60:00")).toBeNull(); // M:SS form — formatTime never emits M >= 60 either
+    expect(toSeconds("1:60:00")).toBeNull(); // H:MM:SS form — minutes still capped at 59
+  });
+  it("rejects more than three colon-separated parts", () => expect(toSeconds("1:2:3:4")).toBeNull());
 });
