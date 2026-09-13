@@ -117,3 +117,52 @@ describe("GET /api/activities/export", () => {
     expect(res.body.data.summary.windowDays).toBe(365);
   });
 });
+
+describe("GET /api/activities/routes", () => {
+  const validPolyline = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
+
+  it("returns an empty routes array when no user exists", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).get("/api/activities/routes");
+    expect(res.status).toBe(200);
+    expect(res.body.data.routes).toEqual([]);
+  });
+
+  it("skips an activity with no list dump at all", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ id: "act-1", name: "Morning Run", type: "Run", local_date: "2026-06-01" }]) // activities
+      .mockResolvedValueOnce([]); // polylines — no dump row for act-1
+
+    const res = await request(app).get("/api/activities/routes");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.routes).toEqual([]);
+  });
+
+  it("returns a decoded route for an activity with a valid polyline", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ id: "act-1", name: "Morning Run", type: "Run", local_date: "2026-06-01" }]) // activities
+      .mockResolvedValueOnce([{ activity_id: "act-1", summary_polyline: validPolyline }]); // polylines
+
+    const res = await request(app).get("/api/activities/routes");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.routes).toHaveLength(1);
+    expect(res.body.data.routes[0]).toMatchObject({ activityId: "act-1", activityName: "Morning Run", type: "Run" });
+    expect(res.body.data.routes[0].points).toHaveLength(3);
+  });
+
+  it("does not 500 on a truncated/degenerate polyline — just omits that activity", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ id: "act-1", name: "Morning Run", type: "Run", local_date: "2026-06-01" }]) // activities
+      .mockResolvedValueOnce([{ activity_id: "act-1", summary_polyline: "?" }]); // decodes to a single point — too short to route
+
+    const res = await request(app).get("/api/activities/routes");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.routes).toEqual([]);
+  });
+});

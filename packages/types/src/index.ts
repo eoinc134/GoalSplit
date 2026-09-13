@@ -159,3 +159,62 @@ export interface PersonalRecords {
   records: PrRecord[]; // standard-distance ladder order, then custom labels alphabetically
   manualEntries: ManualPrEntry[]; // raw manual rows, for the management/delete UI
 }
+
+// ── HR-zone analytics & aerobic decoupling ──────────────────────────────────
+
+export interface HrZoneBoundary {
+  zone: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  minBpm: number;
+  maxBpm: number | null; // null = open-ended top of Z5
+}
+
+export interface HrZoneMinutes {
+  zone: 1 | 2 | 3 | 4 | 5;
+  minutes: number;
+}
+
+export interface HrZoneSummary {
+  windowDays: number;
+  hrMaxEstimate: number | null; // highest max_heartrate ever recorded; null if never recorded
+  zones: HrZoneBoundary[]; // [] when hrMaxEstimate is null
+  minutesByZone: HrZoneMinutes[]; // always all 5 zones present (0 if unused); [] when hrMaxEstimate is null
+  totalMinutes: number;
+  activityCount: number; // activities in window, any type
+  streamsCount: number; // of those, how many had a usable heartrate+time streams dump
+  coveragePct: number | null; // null when activityCount is 0
+}
+
+export interface DecouplingResult {
+  activityId: string;
+  activityName: string;
+  localDate: string; // YYYY-MM-DD
+  movingTimeS: number;
+  ef1: number | null; // efficiency factor (m/s per bpm), first half
+  ef2: number | null;
+  decouplingPct: number | null; // (ef1-ef2)/ef1 * 100
+  usedDistanceFallback: boolean; // true when streams lacked `distance`; summary distance prorated by time instead
+}
+
+export interface HrDriftSummary {
+  windowDays: number;
+  minMovingTimeS: number;
+  qualifyingRunCount: number;
+  streamsCount: number;
+  coveragePct: number | null;
+  runs: DecouplingResult[]; // most recent first
+}
+
+// ── Route maps ───────────────────────────────────────────────────────────────
+
+export interface ActivityRoute {
+  activityId: string;
+  activityName: string;
+  type: ActivityType;
+  localDate: string; // YYYY-MM-DD
+  points: [number, number][]; // [lat, lng]
+}
+
+export interface RoutesResponse {
+  routes: ActivityRoute[]; // only activities with a decodable, >=2-point polyline
+}

@@ -91,3 +91,121 @@ describe("GET /api/training/trends", () => {
     expect(res.body.data.weeks).toBe(52);
   });
 });
+
+describe("GET /api/training/hr-zones", () => {
+  it("returns a zeroed summary when no user exists", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).get("/api/training/hr-zones");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ hrMaxEstimate: null, zones: [], activityCount: 0, coveragePct: null });
+  });
+
+  it("returns zeroed zones when no max_heartrate has ever been recorded", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([]) // hrRows
+      .mockResolvedValueOnce([{ id: "act-1" }]); // activityRows
+
+    const res = await request(app).get("/api/training/hr-zones");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hrMaxEstimate).toBeNull();
+    expect(res.body.data.zones).toEqual([]);
+    // No streams lookup should fire when there are no zones to bucket into.
+    expect(mockSql).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports zero streams coverage when activities exist but none have a streams dump yet", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ max_heartrate: 190 }]) // hrRows
+      .mockResolvedValueOnce([{ id: "act-1" }, { id: "act-2" }]) // activityRows
+      .mockResolvedValueOnce([]); // streamRows — backfill hasn't run yet
+
+    const res = await request(app).get("/api/training/hr-zones");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hrMaxEstimate).toBe(190);
+    expect(res.body.data.activityCount).toBe(2);
+    expect(res.body.data.streamsCount).toBe(0);
+    expect(res.body.data.coveragePct).toBe(0);
+    expect(res.body.data.minutesByZone).toHaveLength(5);
+  });
+
+  it("buckets real streams data into zones", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ max_heartrate: 200 }]) // hrRows
+      .mockResolvedValueOnce([{ id: "act-1" }]) // activityRows
+      .mockResolvedValueOnce([
+        {
+          heartrate_data: [190, 190, 190],
+          time_data: [0, 60, 120],
+        },
+      ]); // streamRows
+
+    const res = await request(app).get("/api/training/hr-zones");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.streamsCount).toBe(1);
+    expect(res.body.data.coveragePct).toBe(100);
+    expect(res.body.data.totalMinutes).toBeGreaterThan(0);
+  });
+});
+
+describe("GET /api/training/hr-drift", () => {
+  it("returns a zeroed summary when no user exists", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).get("/api/training/hr-drift");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ qualifyingRunCount: 0, streamsCount: 0, coveragePct: null, runs: [] });
+  });
+
+  it("reports zero streams coverage when qualifying runs exist but have no streams dump yet", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([
+        { id: "act-1", name: "Long Run", moving_time: 2400, distance: 8000, local_date: "2026-06-01" },
+      ]) // runRows
+      .mockResolvedValueOnce([]); // streamRows
+
+    const res = await request(app).get("/api/training/hr-drift");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.qualifyingRunCount).toBe(1);
+    expect(res.body.data.streamsCount).toBe(0);
+    expect(res.body.data.coveragePct).toBe(0);
+    expect(res.body.data.runs).toEqual([]);
+  });
+
+  it("computes decoupling for a qualifying run with usable streams", async () => {
+    const n = 40;
+    const timeSeconds = Array.from({ length: n }, (_, i) => i * 30);
+    const heartrateBpm = Array.from({ length: n }, (_, i) => (i < n / 2 ? 140 : 160));
+    const distanceMeters = Array.from({ length: n }, (_, i) => (8000 * i) / (n - 1));
+
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([
+        { id: "act-1", name: "Long Run", moving_time: 1200, distance: 8000, local_date: "2026-06-01" },
+      ]) // runRows
+      .mockResolvedValueOnce([
+        { activity_id: "act-1", heartrate_data: heartrateBpm, time_data: timeSeconds, distance_data: distanceMeters },
+      ]); // streamRows
+
+    const res = await request(app).get("/api/training/hr-drift");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.streamsCount).toBe(1);
+    expect(res.body.data.runs).toHaveLength(1);
+    expect(res.body.data.runs[0].usedDistanceFallback).toBe(false);
+    expect(res.body.data.runs[0].decouplingPct).not.toBeNull();
+  });
+
+  it("clamps limit to the 1-50 range", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).get("/api/training/hr-drift?limit=9999");
+    // limit isn't echoed in the response, but the clamp must not throw / must still 200
+    expect(res.status).toBe(200);
+  });
+});

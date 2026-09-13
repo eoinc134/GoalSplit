@@ -2,8 +2,11 @@ import { StatCard } from "@/components/stat-card";
 import { BandBadge } from "@/components/band-badge";
 import { DailyLoadChart } from "@/components/daily-load-chart";
 import { WeeklyVolumeChart, WeeklyPaceChart } from "@/components/weekly-trends-chart";
+import { HrZoneChart } from "@/components/hr-zone-chart";
+import { HrDriftChart } from "@/components/hr-drift-chart";
+import { StreamsBackfillPrompt } from "@/components/streams-backfill-prompt";
 import { serverFetch } from "@/lib/api";
-import type { TrainingLoadSummary, PerformanceTrends } from "@goalsplit/types";
+import type { TrainingLoadSummary, PerformanceTrends, HrZoneSummary, HrDriftSummary } from "@goalsplit/types";
 
 const LOAD_FALLBACK: TrainingLoadSummary = {
   asOf: "",
@@ -18,10 +21,32 @@ const LOAD_FALLBACK: TrainingLoadSummary = {
 
 const TRENDS_FALLBACK: PerformanceTrends = { weeks: 12, volumeByType: [], runPace: [] };
 
+const HR_ZONES_FALLBACK: HrZoneSummary = {
+  windowDays: 28,
+  hrMaxEstimate: null,
+  zones: [],
+  minutesByZone: [],
+  totalMinutes: 0,
+  activityCount: 0,
+  streamsCount: 0,
+  coveragePct: null,
+};
+
+const HR_DRIFT_FALLBACK: HrDriftSummary = {
+  windowDays: 90,
+  minMovingTimeS: 1200,
+  qualifyingRunCount: 0,
+  streamsCount: 0,
+  coveragePct: null,
+  runs: [],
+};
+
 export default async function TrainingPage() {
-  const [load, trends] = await Promise.all([
+  const [load, trends, hrZones, hrDrift] = await Promise.all([
     serverFetch<TrainingLoadSummary>("/training/load", LOAD_FALLBACK),
     serverFetch<PerformanceTrends>("/training/trends?weeks=12", TRENDS_FALLBACK),
+    serverFetch<HrZoneSummary>("/training/hr-zones?days=28", HR_ZONES_FALLBACK),
+    serverFetch<HrDriftSummary>("/training/hr-drift?days=90&limit=30", HR_DRIFT_FALLBACK),
   ]);
 
   return (
@@ -68,6 +93,23 @@ export default async function TrainingPage() {
         <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="mb-4 text-base font-semibold">Weekly Run Pace</h2>
           <WeeklyPaceChart runPace={trends.runPace} />
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+          <h2 className="text-base font-semibold">Time in HR Zone (28 days)</h2>
+          <p className="mb-4 mt-1 text-xs text-neutral-500">
+            Zones are estimated from your highest recorded heart rate, not a lab-measured max.
+          </p>
+          {hrZones.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrZoneChart minutesByZone={hrZones.minutesByZone} />}
+        </div>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+          <h2 className="text-base font-semibold">Aerobic Decoupling (recent runs)</h2>
+          <p className="mb-4 mt-1 text-xs text-neutral-500">
+            HR-vs-pace drift between the first and second half of runs ≥20 min. Under ~10% suggests good aerobic durability.
+          </p>
+          {hrDrift.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrDriftChart runs={hrDrift.runs} />}
         </div>
       </div>
     </div>

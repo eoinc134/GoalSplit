@@ -5,12 +5,29 @@ import {
   type ActivityLoadInput,
   type ListPayloadByActivityId,
 } from "../lib/training-load.js";
-import type { WeeklyVolumePoint, WeeklyPacePoint } from "@goalsplit/types";
+import {
+  estimateHrMax,
+  buildZoneBoundaries,
+  bucketTimeInZone,
+  parseNumberArray,
+  computeAerobicDecoupling,
+  MIN_DECOUPLING_MOVING_TIME_S,
+} from "../lib/hr-zones.js";
+import type {
+  WeeklyVolumePoint,
+  WeeklyPacePoint,
+  HrZoneSummary,
+  DecouplingResult,
+  HrDriftSummary,
+} from "@goalsplit/types";
 
-// Phase 2 (not built here): HR-zone time, grade-adjusted pace, HR drift, power
-// curves — all need the `streams` dump (backfill not run against real data yet)
-// and Strava's /athlete/zones (not ingested at all). This route only reads
-// `activities` and `list` dumps, both already fully populated by every sync.
+// HR-zone time and aerobic decoupling read the `streams` dump — populated only
+// once "Backfill History" has run against real activities, so both endpoints
+// below report a `streamsCount`/`coveragePct` and degrade to a zeroed response
+// rather than erroring when that hasn't happened yet. Grade-adjusted pace,
+// power curves, and real HR/power zones from Strava's /athlete/zones (which
+// would need a broader OAuth scope than this app currently requests) remain
+// deferred — not built here.
 export const trainingRouter = Router();
 
 trainingRouter.get("/load", async (_req, res) => {
@@ -133,4 +150,160 @@ trainingRouter.get("/trends", async (req, res) => {
   }));
 
   return res.json({ data: { weeks, volumeByType, runPace } });
+});
+
+trainingRouter.get("/hr-zones", async (req, res) => {
+  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "28")) || 28, 7), 180);
+
+  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  if (!user) {
+    return res.json({
+      data: {
+        windowDays: days,
+        hrMaxEstimate: null,
+        zones: [],
+        minutesByZone: [],
+        totalMinutes: 0,
+        activityCount: 0,
+        streamsCount: 0,
+        coveragePct: null,
+      } satisfies HrZoneSummary,
+    });
+  }
+
+  const hrRows = await sql<{ max_heartrate: number }[]>`
+    SELECT max_heartrate FROM activities WHERE user_id = ${user.id} AND max_heartrate IS NOT NULL
+  `;
+  const hrMaxEstimate = estimateHrMax(hrRows.map((r) => r.max_heartrate));
+  const zones = hrMaxEstimate !== null ? buildZoneBoundaries(hrMaxEstimate) : [];
+
+  const activityRows = await sql<{ id: string }[]>`
+    SELECT id FROM activities
+    WHERE user_id = ${user.id}
+      AND (start_date_local AT TIME ZONE 'UTC')::date >= CURRENT_DATE - (${days - 1} || ' days')::INTERVAL
+  `;
+  const activityCount = activityRows.length;
+
+  // Projects only the two sub-keys needed, never the full streams payload
+  // (which also carries up to 9 other arrays) — same rationale as prs.ts's
+  // `payload -> 'best_efforts'` projection. Skipped entirely when there's no
+  // hrMaxEstimate — with no zone boundaries there's nothing to bucket into.
+  const streamRows = activityCount > 0 && zones.length > 0
+    ? await sql<{ heartrate_data: unknown; time_data: unknown }[]>`
+        SELECT DISTINCT ON (activity_id)
+          payload -> 'heartrate' -> 'data' AS heartrate_data,
+          payload -> 'time' -> 'data' AS time_data
+        FROM activity_dumps
+        WHERE activity_id = ANY(${activityRows.map((a) => a.id)}) AND source = 'streams'
+        ORDER BY activity_id, fetched_at DESC
+      `
+    : [];
+
+  let streamsCount = 0;
+  let minutesByZone = zones.length > 0 ? bucketTimeInZone([], [], zones).minutesByZone : [];
+  let totalMinutes = 0;
+
+  if (zones.length > 0) {
+    for (const row of streamRows) {
+      const heartrateBpm = parseNumberArray(row.heartrate_data);
+      const timeSeconds = parseNumberArray(row.time_data);
+      if (!heartrateBpm || !timeSeconds) continue;
+
+      streamsCount++;
+      const { minutesByZone: zoneMinutes } = bucketTimeInZone(timeSeconds, heartrateBpm, zones);
+      minutesByZone = minutesByZone.map((z, i) => ({ zone: z.zone, minutes: z.minutes + zoneMinutes[i].minutes }));
+      totalMinutes += zoneMinutes.reduce((sum, z) => sum + z.minutes, 0);
+    }
+  }
+
+  const summary: HrZoneSummary = {
+    windowDays: days,
+    hrMaxEstimate,
+    zones,
+    minutesByZone,
+    totalMinutes,
+    activityCount,
+    streamsCount,
+    coveragePct: activityCount > 0 ? Math.round((streamsCount / activityCount) * 100) : null,
+  };
+
+  return res.json({ data: summary });
+});
+
+trainingRouter.get("/hr-drift", async (req, res) => {
+  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "90")) || 90, 7), 365);
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "30")) || 30, 1), 50);
+
+  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  if (!user) {
+    return res.json({
+      data: {
+        windowDays: days,
+        minMovingTimeS: MIN_DECOUPLING_MOVING_TIME_S,
+        qualifyingRunCount: 0,
+        streamsCount: 0,
+        coveragePct: null,
+        runs: [],
+      } satisfies HrDriftSummary,
+    });
+  }
+
+  const runRows = await sql<
+    { id: string; name: string; moving_time: number; distance: number; local_date: string }[]
+  >`
+    SELECT id, name, moving_time, distance, (start_date_local AT TIME ZONE 'UTC')::date::text AS local_date
+    FROM activities
+    WHERE user_id = ${user.id} AND type = 'Run' AND moving_time >= ${MIN_DECOUPLING_MOVING_TIME_S}
+      AND (start_date_local AT TIME ZONE 'UTC')::date >= CURRENT_DATE - (${days - 1} || ' days')::INTERVAL
+    ORDER BY start_date_local DESC
+    LIMIT ${limit}
+  `;
+  const qualifyingRunCount = runRows.length;
+
+  const streamRows = qualifyingRunCount > 0
+    ? await sql<{ activity_id: string; heartrate_data: unknown; time_data: unknown; distance_data: unknown }[]>`
+        SELECT DISTINCT ON (activity_id) activity_id,
+          payload -> 'heartrate' -> 'data' AS heartrate_data,
+          payload -> 'time' -> 'data' AS time_data,
+          payload -> 'distance' -> 'data' AS distance_data
+        FROM activity_dumps
+        WHERE activity_id = ANY(${runRows.map((r) => r.id)}) AND source = 'streams'
+        ORDER BY activity_id, fetched_at DESC
+      `
+    : [];
+  const streamsByActivity = new Map(streamRows.map((r) => [r.activity_id, r]));
+
+  let streamsCount = 0;
+  const runs: DecouplingResult[] = [];
+  for (const run of runRows) {
+    const streams = streamsByActivity.get(run.id);
+    const heartrateBpm = streams ? parseNumberArray(streams.heartrate_data) : null;
+    const timeSeconds = streams ? parseNumberArray(streams.time_data) : null;
+    if (!heartrateBpm || !timeSeconds) continue;
+
+    streamsCount++;
+    runs.push(
+      computeAerobicDecoupling({
+        activityId: run.id,
+        activityName: run.name,
+        localDate: run.local_date,
+        movingTimeS: run.moving_time,
+        summaryDistanceM: run.distance,
+        timeSeconds,
+        heartrateBpm,
+        distanceMeters: streams ? parseNumberArray(streams.distance_data) : null,
+      }),
+    );
+  }
+
+  const summary: HrDriftSummary = {
+    windowDays: days,
+    minMovingTimeS: MIN_DECOUPLING_MOVING_TIME_S,
+    qualifyingRunCount,
+    streamsCount,
+    coveragePct: qualifyingRunCount > 0 ? Math.round((streamsCount / qualifyingRunCount) * 100) : null,
+    runs,
+  };
+
+  return res.json({ data: summary });
 });

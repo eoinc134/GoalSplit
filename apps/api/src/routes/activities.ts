@@ -6,6 +6,7 @@ import {
   buildTrainingSummary,
   type ActivityDumpPayloads,
 } from "../lib/training-export.js";
+import { buildActivityRoutes, type RoutePolylineRow } from "../lib/polyline.js";
 
 export const activitiesRouter = Router();
 
@@ -61,6 +62,45 @@ activitiesRouter.get("/", async (req, res) => {
       `;
 
   return res.json({ data: activities, total: count });
+});
+
+// GET /activities/routes — decoded route polylines for every synced activity
+// that has GPS data. Uses the `list` dump only, not `detail`: `list` is
+// written on every sync (including the routine incremental one), so it's
+// already the "zero backfill dependency" source; `detail` is a strict
+// coverage subset (only backfilled/new activities), so checking both would
+// add cost for zero additional coverage. Not date-windowed — a route can come
+// from any point in history, same precedent as the PRs endpoint.
+activitiesRouter.get("/routes", async (_req, res) => {
+  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  if (!user) return res.json({ data: { routes: [] } });
+
+  const activityRows = await sql<{ id: string; name: string; type: string; local_date: string }[]>`
+    SELECT id, name, type, (start_date_local AT TIME ZONE 'UTC')::date::text AS local_date
+    FROM activities WHERE user_id = ${user.id} ORDER BY start_date_local DESC
+  `;
+
+  const ids = activityRows.map((a) => a.id);
+  const polylineRows = ids.length
+    ? await sql<{ activity_id: string; summary_polyline: string | null }[]>`
+        SELECT DISTINCT ON (activity_id) activity_id,
+               payload -> 'map' ->> 'summary_polyline' AS summary_polyline
+        FROM activity_dumps
+        WHERE activity_id = ANY(${ids}) AND source = 'list'
+        ORDER BY activity_id, fetched_at DESC
+      `
+    : [];
+
+  const polylineByActivity = new Map(polylineRows.map((r) => [r.activity_id, r.summary_polyline]));
+  const rows: RoutePolylineRow[] = activityRows.map((a) => ({
+    activity_id: a.id,
+    activity_name: a.name,
+    type: a.type,
+    local_date: a.local_date,
+    summary_polyline: polylineByActivity.get(a.id) ?? null,
+  }));
+
+  return res.json({ data: { routes: buildActivityRoutes(rows) } });
 });
 
 // Latest 'list' and 'detail' dump per activity, keyed by activity id.

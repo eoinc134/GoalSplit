@@ -98,6 +98,12 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
 | `GET` | `/api/training/load` | ACWR + 28-day daily training-load series |
 | `GET` | `/api/training/trends` | Weekly volume-by-type + Run pace (`?weeks=1-52`, default 12) |
+| `GET` | `/api/training/hr-zones` | Time-in-HR-zone breakdown (`?days=7-180`, default 28) |
+| `GET` | `/api/training/hr-drift` | Aerobic decoupling for recent qualifying runs (`?days=7-365&limit=1-50`, defaults 90/30) |
+| `GET` | `/api/activities/routes` | Decoded route polylines for the map view |
+| `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
+| `POST` | `/api/prs` | Add a manual personal record |
+| `DELETE` | `/api/prs/:id` | Remove a manual personal record |
 
 ## Training data → Claude
 
@@ -110,9 +116,9 @@ activity). The **Backfill History** button (next to Sync) walks your full Strava
 fill in `detail`/`streams` dumps for activities synced before they existed — click it again
 after the 15-minute Strava rate limit resets if it didn't finish in one pass.
 
-`streams` isn't surfaced anywhere yet (training-export intentionally excludes it — see
-`apps/api/src/routes/activities.ts`) — it's ingestion ahead of the training-load/
-performance-trend analytics work.
+`streams` is deliberately excluded from the training-export markdown/JSON below (see
+`fetchDumpsForActivities` in `apps/api/src/routes/activities.ts`) — it powers the
+HR-zone/decoupling analytics described further down instead.
 
 The training log itself is available directly via
 `GET /api/activities/export?days=30&format=markdown` (or `format=json`) — no UI for it,
@@ -165,16 +171,65 @@ straight from data that's already synced — no separate ingestion step, no back
 
 Both are computed on the fly (`apps/api/src/lib/training-load.ts`,
 `apps/api/src/routes/training.ts`) from the `activities` table and `list` dumps — no
-materialized table, no cron job; the dataset is one person's activity history. HR-zone
-time, grade-adjusted pace, HR drift, and power curves are a later phase, waiting on the
-`streams` backfill (above) and Strava's `/athlete/zones` (not ingested yet).
+materialized table, no cron job; the dataset is one person's activity history.
+
+## Personal records
+
+The **Records** page (`/prs`) tracks your best time per distance, computed fresh from
+Strava every time rather than trusted from a stored value.
+
+- **Strava-derived** — every activity's `detail` dump carries a `best_efforts` array
+  (Strava's own standard-distance bests: 5K, 10K, Half-Marathon, Marathon, etc.). Rather
+  than trust Strava's own `pr_rank` flag on any single activity (which goes stale — dumps
+  are cached forever, so an old activity's flag doesn't update when a later run beats it),
+  this recomputes the true minimum `elapsed_time` per distance across *every* cached
+  `detail` dump on each request — self-healing, no migration needed as new bests appear.
+- **Manual entries** — fill two real gaps: a distance/race Strava has no concept of at
+  all, and a run Strava's own GPS-distance matching missed entirely (e.g. a true 10K
+  effort that recorded 9.9 km never gets a "10K" `best_efforts` entry from Strava, no
+  matter how fast it was). A manual entry can optionally link to the synced activity it
+  corrects, for provenance, and competes on time like any other candidate — the faster of
+  the two wins per distance, and the losing side stays visible for comparison.
+
+Computed in `apps/api/src/lib/personal-records.ts` / `apps/api/src/routes/prs.ts`, same
+on-the-fly, no-materialized-table posture as training load above.
+
+## HR-zone analytics & aerobic decoupling
+
+Two more sections on the **Training** page, built on the `streams` dump (full
+per-activity time-series) rather than the cheaper `list`/`detail` payloads above — so
+both need the **Backfill History** button to have actually run against your activities;
+until then they show a prompt instead of an empty chart.
+
+- **Time in HR zone** — heart-rate zones are *estimated* from the highest heart rate
+  you've ever recorded (not a lab-measured max), split into 5 standard %-of-max bands.
+  Time-in-zone is bucketed from each activity's `heartrate`/`time` streams over a
+  configurable window (`?days=`, default 28).
+- **Aerobic decoupling** — for Run activities ≥20 minutes, compares an efficiency factor
+  (pace ÷ heart rate) between the first and second half of the run. Under ~10% drift is a
+  commonly cited sign of good aerobic durability for that effort. Indoor runs with a
+  heart-rate stream but no GPS-derived distance stream still get a value, via a
+  time-prorated distance proxy (flagged in the response as `usedDistanceFallback`).
+
+Computed in `apps/api/src/lib/hr-zones.ts` / the same `apps/api/src/routes/training.ts`.
+Grade-adjusted pace, power curves, and real HR/power zones from Strava's `/athlete/zones`
+(which would need a broader OAuth scope than this app requests) remain deferred.
+
+## Route maps
+
+The **Routes** page (`/routes`) plots every synced activity with GPS data on one
+OpenStreetMap view (Leaflet + `react-leaflet`, no API key needed), color-coded by
+activity type, using the low-resolution `summary_polyline` already present in every
+activity's cheap `list` dump — **no streams backfill needed**, unlike the HR-zone
+sections above. Decoding happens server-side (`apps/api/src/lib/polyline.ts`), so the
+client never needs a polyline library either.
 
 ## Roadmap
 
 Sports-data-science direction, next up:
 
-- **Phase 2 analytics** — HR-zone time, grade-adjusted pace, HR drift, power curves,
-  once the `streams` backfill is complete and Strava's `/athlete/zones` is ingested.
+- Grade-adjusted pace, power curves, and real HR/power zones from Strava's
+  `/athlete/zones` (would need a broader OAuth scope than this app currently requests).
 - A Claude-coaching layer on top of the training-export data (tracked separately).
 
 ## Deployment (Railway)
