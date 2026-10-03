@@ -241,8 +241,9 @@ point of this integration. [garmy](https://github.com/bes-dev/garmy) (Python, un
 built on the same reverse-engineered Garmin Connect login flow as the long-running
 `python-garminconnect`/GarminDB community tools) documents all of them, with a local
 SQLite mirror and incremental, dedup-aware sync. **No custom Python code was written** —
-the API shells out to garmy's own `garmy-sync` CLI, then reads the resulting SQLite file
-directly with `better-sqlite3` and mirrors the rows into Postgres
+the API shells out to garmy's own sync CLI (as `python3 -m garmy.localdb.cli`, not the
+pip-installed `garmy-sync` binary — see the deployment note below), then reads the
+resulting SQLite file directly with `better-sqlite3` and mirrors the rows into Postgres
 (`apps/api/src/services/garmin-sync.service.ts`). That SQLite file is garmy's own
 "never re-fetch" cache, playing the same role `activity_dumps` plays for Strava — the
 Postgres `garmin_days` table is a derived, re-buildable copy, not a second source of truth.
@@ -275,8 +276,7 @@ Recovery page once this is set up.
 - This is the first non-Node runtime dependency in the repo — Python 3.8+ is now a local
   dev prerequisite, same tier as the existing Docker Desktop requirement.
 - **Railway deployment needs a few extra steps** beyond the two Node services covered
-  below — see [Deploying Garmin support](#deploying-garmin-support). Unverified against
-  a real deploy as of writing; check the first build's logs.
+  below — see [Deploying Garmin support](#deploying-garmin-support).
 
 ## Route maps
 
@@ -329,11 +329,13 @@ only running Strava-based features.
 1. **`nixpacks.toml`** (repo root) tells Railway's Nixpacks builder to also install
    Python + `garmy[localdb]` alongside the auto-detected Node build, as an additive
    phase rather than replacing anything Node-related — the existing Build/Start Command
-   settings above are untouched. **Check the first deploy's build log** for a
-   `pip install garmy[localdb]` line actually running, and that `garmy-sync` resolves on
-   `PATH` when the API process shells out to it — this config is unverified against a
-   real Railway build as of writing, and container PATH composition across Nixpacks
-   phases is the most likely thing to need adjusting if it doesn't work first try.
+   settings above are untouched. Hit `spawn garmy-sync ENOENT` on the first real deploy —
+   the pip-installed `garmy-sync` console script's bin directory isn't reliably on `PATH`
+   at runtime even though the install itself succeeds — so
+   `apps/api/src/services/garmin-sync.service.ts` invokes garmy via
+   `python3 -m garmy.localdb.cli` instead of the `garmy-sync` binary, which only needs
+   `python3` itself on `PATH` (reliable — it's the actual Nix package, not a pip
+   console-script wrapper).
 2. **A persistent Volume**, mounted on the API service (e.g. at `/data`) — Railway's
    filesystem is otherwise wiped on every redeploy, which would force garmy to re-walk
    your *entire* Garmin history from scratch each time (slow, and a real risk of

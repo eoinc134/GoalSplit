@@ -7,15 +7,25 @@ import type { GarminSyncResult } from "@goalsplit/types";
 
 const execFileAsync = promisify(execFile);
 
-// garmy-sync handles Garmin's own (reverse-engineered) auth, incremental sync,
-// and conflict resolution into its own SQLite file — this never talks to
-// Garmin's API directly. We only read the result back out.
+// Invoked as `python3 -m garmy.localdb.cli` rather than the pip-installed
+// `garmy-sync` console script — the console script's wrapper lives in pip's
+// bin directory, which isn't reliably on PATH in every environment (hit this
+// exact failure on Railway: `spawn garmy-sync ENOENT`, even though garmy
+// itself was correctly installed). `garmy.localdb.cli` has a `__main__` guard
+// (`python -m <module> <args>` runs `main()` with sys.argv the normal way,
+// identical to the console script) and only depends on `python3` itself being
+// on PATH, which is a far safer assumption than a pip console-script's bin dir.
+const PYTHON_MODULE = "garmy.localdb.cli";
+
+// garmy handles Garmin's own (reverse-engineered) auth, incremental sync, and
+// conflict resolution into its own SQLite file — this never talks to Garmin's
+// API directly. We only read the result back out.
 export async function syncGarminDays(userId: string, days: number): Promise<GarminSyncResult> {
   const config = validateGarminConfig();
   if (!config) throw new Error("GARMIN_NOT_CONFIGURED");
 
   try {
-    await execFileAsync("garmy-sync", ["sync", "--last-days", String(days)], {
+    await execFileAsync("python3", ["-m", PYTHON_MODULE, "sync", "--last-days", String(days)], {
       env: {
         ...process.env,
         GARMIN_EMAIL: config.email,

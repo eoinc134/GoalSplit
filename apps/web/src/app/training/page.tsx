@@ -64,56 +64,68 @@ export default async function TrainingPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Current ACWR" value={load.acwr !== null ? load.acwr.toFixed(2) : "—"} />
-        <StatCard label="7-Day Load" value={String(Math.round(load.acute.totalLoad))} />
-        <StatCard label="28-Day Avg Load/Day" value={load.chronic.avgLoad.toFixed(1)} />
-        <StatCard
-          label="Data Coverage"
-          value={load.acute.coveragePct !== null ? `${load.acute.coveragePct}%` : "—"}
-          subtext={load.lowCoverage ? "Many activities lack effort data" : undefined}
-        />
+      {/* Load — purely Strava-derived (activities + list dumps), no backfill dependency. */}
+      <div className="space-y-6">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">Load</h2>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatCard label="Current ACWR" value={load.acwr !== null ? load.acwr.toFixed(2) : "—"} />
+          <StatCard label="7-Day Load" value={String(Math.round(load.acute.totalLoad))} />
+          <StatCard label="28-Day Avg Load/Day" value={load.chronic.avgLoad.toFixed(1)} />
+          <StatCard
+            label="Data Coverage"
+            value={load.acute.coveragePct !== null ? `${load.acute.coveragePct}%` : "—"}
+            subtext={load.lowCoverage ? "Many activities lack effort data" : undefined}
+          />
+        </div>
+
+        {load.band && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-400">Status:</span>
+            <BandBadge band={load.band} />
+          </div>
+        )}
+
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+          <h3 className="mb-4 text-base font-semibold">Daily Training Load (28 days)</h3>
+          <DailyLoadChart daily={load.daily} chronicAvgLoad={load.chronic.avgLoad} />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+            <h3 className="mb-4 text-base font-semibold">Weekly Volume</h3>
+            <WeeklyVolumeChart volumeByType={trends.volumeByType} />
+          </div>
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+            <h3 className="mb-4 text-base font-semibold">Weekly Run Pace</h3>
+            <WeeklyPaceChart runPace={trends.runPace} />
+          </div>
+        </div>
       </div>
 
-      {load.band && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-400">Status:</span>
-          <BandBadge band={load.band} />
-        </div>
-      )}
+      {/* Physiology — needs the `streams` backfill (and Garmin, for the Karvonen
+          upgrade) rather than just a routine sync, so it's visually separated from
+          the Load section above, which works from data that's always present. */}
+      <div className="space-y-6 border-t border-neutral-800 pt-8">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">Physiology</h2>
 
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-        <h2 className="mb-4 text-base font-semibold">Daily Training Load (28 days)</h2>
-        <DailyLoadChart daily={load.daily} chronicAvgLoad={load.chronic.avgLoad} />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-4 text-base font-semibold">Weekly Volume</h2>
-          <WeeklyVolumeChart volumeByType={trends.volumeByType} />
-        </div>
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="mb-4 text-base font-semibold">Weekly Run Pace</h2>
-          <WeeklyPaceChart runPace={trends.runPace} />
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-base font-semibold">Time in HR Zone (28 days)</h2>
-          <p className="mb-4 mt-1 text-xs text-neutral-500">
-            {hrZones.zoneModel === "karvonen"
-              ? `Karvonen zones (HRR), using a resting HR of ${hrZones.restingHeartRateEstimate} bpm from Garmin.`
-              : "Estimated from your highest recorded heart rate, not a lab-measured max — sync Garmin on the Recovery page for a resting-HR-based (Karvonen) model."}
-          </p>
-          {hrZones.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrZoneChart minutesByZone={hrZones.minutesByZone} />}
-        </div>
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-base font-semibold">Aerobic Decoupling (recent runs)</h2>
-          <p className="mb-4 mt-1 text-xs text-neutral-500">
-            HR-vs-pace drift between the first and second half of runs ≥20 min. Under ~10% suggests good aerobic durability.
-          </p>
-          {hrDrift.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrDriftChart runs={hrDrift.runs} />}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+            <h3 className="text-base font-semibold">Time in HR Zone (28 days)</h3>
+            <p className="mb-4 mt-1 text-xs text-neutral-500">
+              {hrZones.zoneModel === "karvonen"
+                ? `Karvonen zones (HRR), using a resting HR of ${hrZones.restingHeartRateEstimate} bpm from Garmin.`
+                : "Estimated from your highest recorded heart rate, not a lab-measured max — sync Garmin on the Recovery page for a resting-HR-based (Karvonen) model."}
+            </p>
+            {hrZones.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrZoneChart minutesByZone={hrZones.minutesByZone} />}
+          </div>
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+            <h3 className="text-base font-semibold">Aerobic Decoupling (recent runs)</h3>
+            <p className="mb-4 mt-1 text-xs text-neutral-500">
+              HR-vs-pace drift between the first and second half of runs ≥20 min. Under ~10% suggests good aerobic durability.
+            </p>
+            {hrDrift.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrDriftChart runs={hrDrift.runs} />}
+          </div>
         </div>
       </div>
     </div>

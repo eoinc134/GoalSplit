@@ -1,19 +1,19 @@
 # Adds Python + garmy on top of Railway's auto-detected Node build for the API
-# service, so the deployed container can shell out to `garmy-sync` the same
-# way the local dev API does (apps/api/src/services/garmin-sync.service.ts).
+# service, so the deployed container can run garmy the same way the local dev
+# API does (apps/api/src/services/garmin-sync.service.ts).
 #
 # Deliberately additive: a new phase depending on Nixpacks' built-in `setup`,
 # rather than redefining `phases.setup` itself — avoids touching whatever
 # Node setup Nixpacks auto-detects, so the existing Build/Start Command
 # settings in the Railway dashboard keep working unchanged.
 #
-# UNVERIFIED against a live Railway deploy — check the first build's logs for:
-#   1. this phase actually running (look for "pip install garmy[localdb]")
-#   2. `garmy-sync` resolving on PATH when the API process shells out to it
-# If `garmy-sync` isn't found at runtime, the pip-installed console script may
-# not be landing on PATH in later phases — the fix is almost certainly a PATH
-# export here, but what exactly depends on how Nixpacks laid out the Python
-# env, which only a real build log will show.
+# Confirmed on a real deploy: the pip-installed `garmy-sync` console script's
+# own bin directory is NOT reliably on PATH at runtime (hit `spawn garmy-sync
+# ENOENT` in production even though `pip install garmy[localdb]` here had
+# succeeded) — so the API invokes garmy via `python3 -m garmy.localdb.cli`
+# instead of the `garmy-sync` binary. That only needs `python3` itself on
+# PATH, which Nixpacks' `python311` package provides reliably, unlike a pip
+# console script's bin dir.
 [phases.python]
 dependsOn = ["setup"]
 nixPkgs = ["python311", "python311Packages.pip"]

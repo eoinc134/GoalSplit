@@ -85,10 +85,11 @@ describe("syncGarminDays", () => {
     await expect(syncGarminDays("user-1", 7)).rejects.toThrow("GARMIN_SYNC_FAILED");
   });
 
-  it("passes Garmin credentials through to the CLI via env vars", async () => {
+  it("invokes garmy via `python3 -m garmy.localdb.cli`, not the garmy-sync console script", async () => {
     await syncGarminDays("user-1", 7);
-    const [, args, options] = mockExecFile.mock.calls[0];
-    expect(args).toEqual(["sync", "--last-days", "7"]);
+    const [file, args, options] = mockExecFile.mock.calls[0];
+    expect(file).toBe("python3");
+    expect(args).toEqual(["-m", "garmy.localdb.cli", "sync", "--last-days", "7"]);
     expect((options as { env: Record<string, string> }).env).toMatchObject({
       GARMIN_EMAIL: "me@example.com",
       GARMIN_PASSWORD: "secret",
