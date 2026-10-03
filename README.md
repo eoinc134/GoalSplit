@@ -274,9 +274,9 @@ Recovery page once this is set up.
   leaked.
 - This is the first non-Node runtime dependency in the repo — Python 3.8+ is now a local
   dev prerequisite, same tier as the existing Docker Desktop requirement.
-- **Not deployed to Railway yet** — the deployment section below covers two Node
-  services; adding a Python CLI invocation to that is a separate, unsolved problem. For
-  now this is a local/dev-run manual sync, same trust level as clicking "Sync Activities."
+- **Railway deployment needs a few extra steps** beyond the two Node services covered
+  below — see [Deploying Garmin support](#deploying-garmin-support). Unverified against
+  a real deploy as of writing; check the first build's logs.
 
 ## Route maps
 
@@ -320,6 +320,34 @@ STRAVA_CLIENT_SECRET  → your Strava app secret
 STRAVA_REDIRECT_URI   → https://<api-domain>.railway.app/api/auth/strava/callback
 FRONTEND_URL          → https://<web-domain>.railway.app
 ```
+
+### Deploying Garmin support
+
+Three extra things on top of the API service above — none of this is needed if you're
+only running Strava-based features.
+
+1. **`nixpacks.toml`** (repo root) tells Railway's Nixpacks builder to also install
+   Python + `garmy[localdb]` alongside the auto-detected Node build, as an additive
+   phase rather than replacing anything Node-related — the existing Build/Start Command
+   settings above are untouched. **Check the first deploy's build log** for a
+   `pip install garmy[localdb]` line actually running, and that `garmy-sync` resolves on
+   `PATH` when the API process shells out to it — this config is unverified against a
+   real Railway build as of writing, and container PATH composition across Nixpacks
+   phases is the most likely thing to need adjusting if it doesn't work first try.
+2. **A persistent Volume**, mounted on the API service (e.g. at `/data`) — Railway's
+   filesystem is otherwise wiped on every redeploy, which would force garmy to re-walk
+   your *entire* Garmin history from scratch each time (slow, and a real risk of
+   tripping Garmin's rate limiting/bot detection from a datacenter IP, worse than the
+   same risk already called out for local use).
+3. **`GARMY_DB_PATH` must point inside that volume** — e.g. `/data/garmin-health.db`,
+   not a relative path like the local-dev default. Set this alongside `GARMIN_EMAIL`/
+   `GARMIN_PASSWORD` as API service environment variables (same place as the Strava vars
+   above) — **double check this if you set the env vars before deciding the mount path**,
+   a mismatch here means garmy silently starts a fresh, empty database on next deploy.
+
+Sync stays manual (click **Sync Garmin** on `/recovery`) unless you also set up a
+Railway Cron Job to hit `POST /api/garmin/sync` on a schedule — not required, just a
+reasonable follow-up since nobody's around in production to click a button.
 
 ### Web service
 
