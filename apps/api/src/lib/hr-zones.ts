@@ -32,6 +32,21 @@ export function buildZoneBoundaries(hrMax: number): HrZoneBoundary[] {
   }));
 }
 
+// HRR (heart rate reserve) model — more individualized than %-of-max since it
+// accounts for resting HR, not just peak. Same ZONE_PCT bands, reinterpreted
+// as %HRR per the standard Karvonen convention, so zoneForHeartrate/
+// bucketTimeInZone need no changes — they just consume whichever boundaries
+// array the caller picks.
+export function buildZoneBoundariesKarvonen(hrMax: number, hrRest: number): HrZoneBoundary[] {
+  const hrr = hrMax - hrRest;
+  return ZONE_PCT.map((z, i) => ({
+    zone: z.zone,
+    label: z.label,
+    minBpm: Math.round(hrRest + z.minPct * hrr),
+    maxBpm: i < ZONE_PCT.length - 1 ? Math.round(hrRest + ZONE_PCT[i + 1].minPct * hrr) - 1 : null,
+  }));
+}
+
 // Last zone whose minBpm <= bpm. Never throws on out-of-range input: bpm <= 0
 // falls into Z1, anything above Z5's floor is Z5.
 export function zoneForHeartrate(bpm: number, boundaries: HrZoneBoundary[]): 1 | 2 | 3 | 4 | 5 {

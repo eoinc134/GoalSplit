@@ -124,5 +124,39 @@ export async function initSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_manual_prs_user ON manual_prs (user_id)
   `;
 
+  // All-day wellness metrics Strava structurally can't provide (it only sees
+  // HR during a recorded activity) — synced from garmy's local SQLite mirror
+  // of Garmin Connect (see apps/api/src/services/garmin-sync.service.ts). This
+  // is a derived, re-buildable copy for this app's own queries, not a second
+  // independent source of truth — garmy's own SQLite file plays the
+  // "never re-fetch" cache role that activity_dumps plays for Strava.
+  await sql`
+    CREATE TABLE IF NOT EXISTS garmin_days (
+      id                       TEXT PRIMARY KEY,
+      user_id                  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day                      DATE NOT NULL,
+      resting_heart_rate       INTEGER,
+      max_heart_rate           INTEGER,
+      min_heart_rate           INTEGER,
+      average_heart_rate       INTEGER,
+      avg_stress_level         INTEGER,
+      max_stress_level         INTEGER,
+      body_battery_high        INTEGER,
+      body_battery_low         INTEGER,
+      sleep_duration_hours     DOUBLE PRECISION,
+      training_readiness_score INTEGER,
+      training_readiness_level TEXT,
+      hrv_last_night_avg       DOUBLE PRECISION,
+      hrv_status               TEXT,
+      total_steps              INTEGER,
+      synced_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, day)
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_garmin_days_user_day ON garmin_days (user_id, day DESC)
+  `;
+
   console.log("DB schema ready");
 }

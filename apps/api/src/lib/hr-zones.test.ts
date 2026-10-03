@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   estimateHrMax,
   buildZoneBoundaries,
+  buildZoneBoundariesKarvonen,
   zoneForHeartrate,
   parseNumberArray,
   bucketTimeInZone,
@@ -26,6 +27,28 @@ describe("buildZoneBoundaries", () => {
     expect(zones[0]).toMatchObject({ zone: 1, minBpm: 0, maxBpm: 119 }); // <60% of 200
     expect(zones[1]).toMatchObject({ zone: 2, minBpm: 120, maxBpm: 139 }); // 60-70%
     expect(zones[4]).toMatchObject({ zone: 5, minBpm: 180, maxBpm: null }); // >=90%, open-ended
+  });
+});
+
+describe("buildZoneBoundariesKarvonen", () => {
+  it("computes HRR-based boundaries for known hrMax/hrRest values", () => {
+    // hrMax=190, hrRest=50 -> HRR=140
+    const zones = buildZoneBoundariesKarvonen(190, 50);
+    expect(zones).toHaveLength(5);
+    expect(zones[0]).toMatchObject({ zone: 1, minBpm: 50, maxBpm: 133 }); // 50 + 0%*140 .. 50+60%*140-1
+    expect(zones[1]).toMatchObject({ zone: 2, minBpm: 134, maxBpm: 147 }); // 50+60%*140 .. 50+70%*140-1
+    expect(zones[4]).toMatchObject({ zone: 5, minBpm: 176, maxBpm: null }); // 50+90%*140, open-ended
+  });
+
+  it("degrades to a flat hrRest floor when hrMax equals hrRest (zero HRR)", () => {
+    const zones = buildZoneBoundariesKarvonen(150, 150);
+    expect(zones.every((z) => z.minBpm === 150)).toBe(true);
+  });
+
+  it("differs from the %-of-max model for the same hrMax, since it accounts for resting HR", () => {
+    const percentMax = buildZoneBoundaries(190);
+    const karvonen = buildZoneBoundariesKarvonen(190, 50);
+    expect(karvonen[2].minBpm).not.toBe(percentMax[2].minBpm);
   });
 });
 

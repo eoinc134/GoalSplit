@@ -31,6 +31,10 @@ yarn-error.log*
 .env.local
 .env*.local
 
+# Garmin health data (garmy's local SQLite mirror — contains personal health data)
+*.db
+*.db-journal
+
 # vercel
 .vercel
 

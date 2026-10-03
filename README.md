@@ -1,8 +1,9 @@
 # GoalSplit
 
-A sports data science project built on my own Strava training data — syncing activities,
-exporting training logs for LLM-assisted coaching, and computing training load (ACWR) and
-performance trends.
+A sports data science project built on my own Strava training data and Garmin wellness
+data — syncing activities, exporting training logs for LLM-assisted coaching, and
+computing training load (ACWR), performance trends, and recovery signals (resting HR,
+HRV, sleep, readiness).
 
 ## Stack
 
@@ -68,6 +69,9 @@ npm run dev
 | API | http://localhost:3001/api |
 | Health check | http://localhost:3001/health |
 
+**Optional:** [Garmin health data](#garmin-health-data) (resting HR, sleep, readiness)
+needs a separate, optional setup step — skip it for now if you just want Strava running.
+
 ## Strava integration
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app
@@ -104,6 +108,8 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
 | `POST` | `/api/prs` | Add a manual personal record |
 | `DELETE` | `/api/prs/:id` | Remove a manual personal record |
+| `POST` | `/api/garmin/sync` | Sync recent days from Garmin via garmy (`?days=1-365`, default 7) |
+| `GET` | `/api/garmin/days` | Synced daily Garmin wellness data (`?days=7-365`, default 90) |
 
 ## Training data → Claude
 
@@ -201,10 +207,15 @@ per-activity time-series) rather than the cheaper `list`/`detail` payloads above
 both need the **Backfill History** button to have actually run against your activities;
 until then they show a prompt instead of an empty chart.
 
-- **Time in HR zone** — heart-rate zones are *estimated* from the highest heart rate
-  you've ever recorded (not a lab-measured max), split into 5 standard %-of-max bands.
-  Time-in-zone is bucketed from each activity's `heartrate`/`time` streams over a
-  configurable window (`?days=`, default 28).
+- **Time in HR zone** — heart-rate zones default to an *estimate* from the highest heart
+  rate you've ever recorded (not a lab-measured max), split into 5 standard %-of-max
+  bands. Once [Garmin data](#garmin-health-data) has synced at least one resting HR, this
+  upgrades automatically to a **Karvonen (heart-rate-reserve) model** — `targetHR =
+  restingHR + %intensity × (maxHR − restingHR)` — which is more individualized since it
+  accounts for resting HR, not just peak; the active model is reported as
+  `zoneModel: "karvonen" | "percent-max"` and shown in the page copy. Time-in-zone itself
+  is bucketed from each activity's `heartrate`/`time` streams over a configurable window
+  (`?days=`, default 28).
 - **Aerobic decoupling** — for Run activities ≥20 minutes, compares an efficiency factor
   (pace ÷ heart rate) between the first and second half of the run. Under ~10% drift is a
   commonly cited sign of good aerobic durability for that effort. Indoor runs with a
@@ -214,6 +225,58 @@ until then they show a prompt instead of an empty chart.
 Computed in `apps/api/src/lib/hr-zones.ts` / the same `apps/api/src/routes/training.ts`.
 Grade-adjusted pace, power curves, and real HR/power zones from Strava's `/athlete/zones`
 (which would need a broader OAuth scope than this app requests) remain deferred.
+
+## Garmin health data
+
+Strava only ever sees heart rate *during a recorded activity* — it has no idea what your
+HR is at 3am or sitting at a desk. The **Recovery** page (`/recovery`) adds exactly that:
+resting HR, HRV, sleep, and Garmin's own Training Readiness score — a recovery-side
+companion to the training-load (ACWR) story above. Load tells you how much stress you're
+taking on; this tells you how well you're absorbing it.
+
+**Why garmy, not a TS package:** the obvious TS option (`garmin-connect` on npm) was
+checked and rejected — last published Jan 2024, several methods still TODO, and it simply
+doesn't expose resting HR, HRV, Body Battery, or training readiness, which is the entire
+point of this integration. [garmy](https://github.com/bes-dev/garmy) (Python, unofficial —
+built on the same reverse-engineered Garmin Connect login flow as the long-running
+`python-garminconnect`/GarminDB community tools) documents all of them, with a local
+SQLite mirror and incremental, dedup-aware sync. **No custom Python code was written** —
+the API shells out to garmy's own `garmy-sync` CLI, then reads the resulting SQLite file
+directly with `better-sqlite3` and mirrors the rows into Postgres
+(`apps/api/src/services/garmin-sync.service.ts`). That SQLite file is garmy's own
+"never re-fetch" cache, playing the same role `activity_dumps` plays for Strava — the
+Postgres `garmin_days` table is a derived, re-buildable copy, not a second source of truth.
+
+### Setup
+
+```sh
+pip install garmy[localdb]
+```
+
+Then fill in `apps/api/.env` (see `.env.example`):
+
+```env
+GARMIN_EMAIL=
+GARMIN_PASSWORD=
+GARMY_DB_PATH=./garmin-health.db
+```
+
+**MFA must be disabled on the Garmin account** — the sync CLI authenticates
+non-interactively and has no documented MFA-code handling. Click **Sync Garmin** on the
+Recovery page once this is set up.
+
+### Honest caveats
+
+- Unofficial/reverse-engineered — garmy is young (created mid-2025), could break without
+  notice if Garmin changes their backend. No SLA, unlike Strava's public API.
+- Needs the Garmin account's actual password in `.env`, not a scoped OAuth token like
+  Strava — same secrets discipline as the Strava client secret, higher blast radius if
+  leaked.
+- This is the first non-Node runtime dependency in the repo — Python 3.8+ is now a local
+  dev prerequisite, same tier as the existing Docker Desktop requirement.
+- **Not deployed to Railway yet** — the deployment section below covers two Node
+  services; adding a Python CLI invocation to that is a separate, unsolved problem. For
+  now this is a local/dev-run manual sync, same trust level as clicking "Sync Activities."
 
 ## Route maps
 

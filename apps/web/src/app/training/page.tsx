@@ -30,6 +30,8 @@ const HR_ZONES_FALLBACK: HrZoneSummary = {
   activityCount: 0,
   streamsCount: 0,
   coveragePct: null,
+  zoneModel: "percent-max",
+  restingHeartRateEstimate: null,
 };
 
 const HR_DRIFT_FALLBACK: HrDriftSummary = {
@@ -100,7 +102,9 @@ export default async function TrainingPage() {
         <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-base font-semibold">Time in HR Zone (28 days)</h2>
           <p className="mb-4 mt-1 text-xs text-neutral-500">
-            Zones are estimated from your highest recorded heart rate, not a lab-measured max.
+            {hrZones.zoneModel === "karvonen"
+              ? `Karvonen zones (HRR), using a resting HR of ${hrZones.restingHeartRateEstimate} bpm from Garmin.`
+              : "Estimated from your highest recorded heart rate, not a lab-measured max — sync Garmin on the Recovery page for a resting-HR-based (Karvonen) model."}
           </p>
           {hrZones.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrZoneChart minutesByZone={hrZones.minutesByZone} />}
         </div>

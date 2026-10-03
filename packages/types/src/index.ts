@@ -183,6 +183,8 @@ export interface HrZoneSummary {
   activityCount: number; // activities in window, any type
   streamsCount: number; // of those, how many had a usable heartrate+time streams dump
   coveragePct: number | null; // null when activityCount is 0
+  zoneModel: "karvonen" | "percent-max"; // karvonen once a Garmin resting HR is available
+  restingHeartRateEstimate: number | null; // most recent known resting HR; null until Garmin is synced
 }
 
 export interface DecouplingResult {
@@ -215,4 +217,35 @@ export interface ActivityRoute {
   type: ActivityType;
   localDate: string; // YYYY-MM-DD
   points: [number, number][]; // [lat, lng]
+}
+
+// ── Garmin health data ───────────────────────────────────────────────────────
+// All-day wellness metrics Strava structurally can't provide (it only sees HR
+// during a recorded activity). Synced via garmy's local SQLite mirror — see
+// apps/api/src/services/garmin-sync.service.ts.
+
+export interface GarminDayPoint {
+  day: string; // YYYY-MM-DD
+  restingHeartRate: number | null;
+  maxHeartRate: number | null;
+  minHeartRate: number | null;
+  averageHeartRate: number | null;
+  avgStressLevel: number | null;
+  maxStressLevel: number | null;
+  bodyBatteryHigh: number | null;
+  bodyBatteryLow: number | null;
+  sleepDurationHours: number | null;
+  trainingReadinessScore: number | null;
+  trainingReadinessLevel: string | null;
+  hrvLastNightAvg: number | null;
+  hrvStatus: string | null;
+  totalSteps: number | null;
+}
+
+export interface GarminDaysResponse {
+  days: GarminDayPoint[]; // oldest first
+}
+
+export interface GarminSyncResult {
+  synced: number;
 }

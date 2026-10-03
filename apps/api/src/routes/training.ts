@@ -8,6 +8,7 @@ import {
 import {
   estimateHrMax,
   buildZoneBoundaries,
+  buildZoneBoundariesKarvonen,
   bucketTimeInZone,
   parseNumberArray,
   computeAerobicDecoupling,
@@ -167,6 +168,8 @@ trainingRouter.get("/hr-zones", async (req, res) => {
         activityCount: 0,
         streamsCount: 0,
         coveragePct: null,
+        zoneModel: "percent-max",
+        restingHeartRateEstimate: null,
       } satisfies HrZoneSummary,
     });
   }
@@ -174,8 +177,34 @@ trainingRouter.get("/hr-zones", async (req, res) => {
   const hrRows = await sql<{ max_heartrate: number }[]>`
     SELECT max_heartrate FROM activities WHERE user_id = ${user.id} AND max_heartrate IS NOT NULL
   `;
-  const hrMaxEstimate = estimateHrMax(hrRows.map((r) => r.max_heartrate));
-  const zones = hrMaxEstimate !== null ? buildZoneBoundaries(hrMaxEstimate) : [];
+  // Garmin's continuous all-day monitoring can catch a spike a logged Strava
+  // activity never did, so it's merged into the same HRmax estimate rather
+  // than kept separate.
+  const garminHrRows = await sql<{ max_heart_rate: number }[]>`
+    SELECT max_heart_rate FROM garmin_days WHERE user_id = ${user.id} AND max_heart_rate IS NOT NULL
+  `;
+  const hrMaxEstimate = estimateHrMax([
+    ...hrRows.map((r) => r.max_heartrate),
+    ...garminHrRows.map((r) => r.max_heart_rate),
+  ]);
+
+  // The most recent known resting HR upgrades the zone model from %-of-max to
+  // Karvonen (HRR) — more individualized since it accounts for resting HR,
+  // not just peak. Falls back to %-of-max until Garmin has synced at least once.
+  const [latestResting] = await sql<{ resting_heart_rate: number }[]>`
+    SELECT resting_heart_rate FROM garmin_days
+    WHERE user_id = ${user.id} AND resting_heart_rate IS NOT NULL
+    ORDER BY day DESC LIMIT 1
+  `;
+  const restingHeartRateEstimate = latestResting?.resting_heart_rate ?? null;
+
+  const zoneModel: "karvonen" | "percent-max" = restingHeartRateEstimate !== null ? "karvonen" : "percent-max";
+  const zones =
+    hrMaxEstimate === null
+      ? []
+      : zoneModel === "karvonen"
+        ? buildZoneBoundariesKarvonen(hrMaxEstimate, restingHeartRateEstimate!)
+        : buildZoneBoundaries(hrMaxEstimate);
 
   const activityRows = await sql<{ id: string }[]>`
     SELECT id FROM activities
@@ -225,6 +254,8 @@ trainingRouter.get("/hr-zones", async (req, res) => {
     activityCount,
     streamsCount,
     coveragePct: activityCount > 0 ? Math.round((streamsCount / activityCount) * 100) : null,
+    zoneModel,
+    restingHeartRateEstimate,
   };
 
   return res.json({ data: summary });

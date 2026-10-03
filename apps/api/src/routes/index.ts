@@ -4,6 +4,7 @@ import { authRouter } from "./auth.js";
 import { activitiesRouter } from "./activities.js";
 import { trainingRouter } from "./training.js";
 import { prsRouter } from "./prs.js";
+import { garminRouter } from "./garmin.js";
 
 export const router = Router();
 
@@ -12,3 +13,4 @@ router.use("/auth", authRouter);
 router.use("/activities", activitiesRouter);
 router.use("/training", trainingRouter);
 router.use("/prs", prsRouter);
+router.use("/garmin", garminRouter);

@@ -97,13 +97,22 @@ describe("GET /api/training/hr-zones", () => {
     mockSql.mockResolvedValueOnce([]); // users
     const res = await request(app).get("/api/training/hr-zones");
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ hrMaxEstimate: null, zones: [], activityCount: 0, coveragePct: null });
+    expect(res.body.data).toMatchObject({
+      hrMaxEstimate: null,
+      zones: [],
+      activityCount: 0,
+      coveragePct: null,
+      zoneModel: "percent-max",
+      restingHeartRateEstimate: null,
+    });
   });
 
   it("returns zeroed zones when no max_heartrate has ever been recorded", async () => {
     mockSql
       .mockResolvedValueOnce([{ id: "user-1" }]) // users
-      .mockResolvedValueOnce([]) // hrRows
+      .mockResolvedValueOnce([]) // hrRows (Strava)
+      .mockResolvedValueOnce([]) // garminHrRows
+      .mockResolvedValueOnce([]) // latestResting
       .mockResolvedValueOnce([{ id: "act-1" }]); // activityRows
 
     const res = await request(app).get("/api/training/hr-zones");
@@ -111,14 +120,17 @@ describe("GET /api/training/hr-zones", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.hrMaxEstimate).toBeNull();
     expect(res.body.data.zones).toEqual([]);
+    expect(res.body.data.zoneModel).toBe("percent-max");
     // No streams lookup should fire when there are no zones to bucket into.
-    expect(mockSql).toHaveBeenCalledTimes(3);
+    expect(mockSql).toHaveBeenCalledTimes(5);
   });
 
   it("reports zero streams coverage when activities exist but none have a streams dump yet", async () => {
     mockSql
       .mockResolvedValueOnce([{ id: "user-1" }]) // users
       .mockResolvedValueOnce([{ max_heartrate: 190 }]) // hrRows
+      .mockResolvedValueOnce([]) // garminHrRows
+      .mockResolvedValueOnce([]) // latestResting
       .mockResolvedValueOnce([{ id: "act-1" }, { id: "act-2" }]) // activityRows
       .mockResolvedValueOnce([]); // streamRows — backfill hasn't run yet
 
@@ -130,12 +142,15 @@ describe("GET /api/training/hr-zones", () => {
     expect(res.body.data.streamsCount).toBe(0);
     expect(res.body.data.coveragePct).toBe(0);
     expect(res.body.data.minutesByZone).toHaveLength(5);
+    expect(res.body.data.zoneModel).toBe("percent-max");
   });
 
   it("buckets real streams data into zones", async () => {
     mockSql
       .mockResolvedValueOnce([{ id: "user-1" }]) // users
       .mockResolvedValueOnce([{ max_heartrate: 200 }]) // hrRows
+      .mockResolvedValueOnce([]) // garminHrRows
+      .mockResolvedValueOnce([]) // latestResting
       .mockResolvedValueOnce([{ id: "act-1" }]) // activityRows
       .mockResolvedValueOnce([
         {
@@ -150,6 +165,25 @@ describe("GET /api/training/hr-zones", () => {
     expect(res.body.data.streamsCount).toBe(1);
     expect(res.body.data.coveragePct).toBe(100);
     expect(res.body.data.totalMinutes).toBeGreaterThan(0);
+  });
+
+  it("upgrades to the Karvonen model once a Garmin resting HR is available", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([{ max_heartrate: 190 }]) // hrRows
+      .mockResolvedValueOnce([{ max_heart_rate: 195 }]) // garminHrRows — higher than Strava's own max
+      .mockResolvedValueOnce([{ resting_heart_rate: 50 }]) // latestResting
+      .mockResolvedValueOnce([{ id: "act-1" }]) // activityRows
+      .mockResolvedValueOnce([]); // streamRows
+
+    const res = await request(app).get("/api/training/hr-zones");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.zoneModel).toBe("karvonen");
+    expect(res.body.data.restingHeartRateEstimate).toBe(50);
+    // Garmin's 195 beat Strava's 190 — the merged estimate should reflect that.
+    expect(res.body.data.hrMaxEstimate).toBe(195);
+    expect(res.body.data.zones[0].minBpm).toBe(50); // Karvonen zone 1 floor is hrRest itself
   });
 });
 
