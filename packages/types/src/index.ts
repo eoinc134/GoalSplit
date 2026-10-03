@@ -206,6 +206,8 @@ export interface HrDriftSummary {
 }
 
 // ── Route maps ───────────────────────────────────────────────────────────────
+// Used only per-activity now (see ActivityDetail.route on the web side) — the
+// all-activities overview endpoint/page was removed in favor of it.
 
 export interface ActivityRoute {
   activityId: string;
@@ -213,8 +215,4 @@ export interface ActivityRoute {
   type: ActivityType;
   localDate: string; // YYYY-MM-DD
   points: [number, number][]; // [lat, lng]
-}
-
-export interface RoutesResponse {
-  routes: ActivityRoute[]; // only activities with a decodable, >=2-point polyline
 }

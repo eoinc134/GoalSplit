@@ -101,7 +101,6 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/training/trends` | Weekly volume-by-type + Run pace (`?weeks=1-52`, default 12) |
 | `GET` | `/api/training/hr-zones` | Time-in-HR-zone breakdown (`?days=7-180`, default 28) |
 | `GET` | `/api/training/hr-drift` | Aerobic decoupling for recent qualifying runs (`?days=7-365&limit=1-50`, defaults 90/30) |
-| `GET` | `/api/activities/routes` | Decoded route polylines for the map view (all activities) |
 | `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
 | `POST` | `/api/prs` | Add a manual personal record |
 | `DELETE` | `/api/prs/:id` | Remove a manual personal record |
@@ -218,18 +217,17 @@ Grade-adjusted pace, power curves, and real HR/power zones from Strava's `/athle
 
 ## Route maps
 
-The **Routes** page (`/routes`) plots every synced activity with GPS data on one
-OpenStreetMap view (Leaflet + `react-leaflet`, no API key needed), color-coded by
-activity type, using the low-resolution `summary_polyline` already present in every
-activity's cheap `list` dump — **no streams backfill needed**, unlike the HR-zone
-sections above. Decoding happens server-side (`apps/api/src/lib/polyline.ts`), so the
-client never needs a polyline library either.
-
 Clicking an activity (on the Dashboard or the Activities page) opens `/runs/[id]`, a
-detail view with that single activity's own route map (the same Leaflet component, fed
-one route instead of all of them), its core stats, and a formatted notes block reusing
-the same workout-type/effort/cadence/description/splits/best-efforts rendering built for
-the Claude training-log export (`buildActivityNote` in `apps/api/src/lib/training-export.ts`).
+detail view with that activity's own route on an OpenStreetMap view (Leaflet +
+`react-leaflet`, no API key needed), using the low-resolution `summary_polyline` already
+present in every activity's cheap `list` dump — **no streams backfill needed**, unlike
+the HR-zone sections above. Decoding happens server-side (`apps/api/src/lib/polyline.ts`),
+so the client never needs a polyline library either. The detail view also shows the
+activity's core stats and a formatted notes block reusing the same
+workout-type/effort/cadence/description/splits/best-efforts rendering built for the
+Claude training-log export (`buildActivityNote` in `apps/api/src/lib/training-export.ts`).
+
+There's no separate "all routes at once" overview — routes are viewed per activity only.
 
 ## Roadmap
 
