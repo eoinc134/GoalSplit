@@ -166,3 +166,67 @@ describe("GET /api/activities/routes", () => {
     expect(res.body.data.routes).toEqual([]);
   });
 });
+
+describe("GET /api/activities/:id", () => {
+  const validPolyline = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
+
+  it("returns 404 when no user exists", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).get("/api/activities/act-1");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the activity doesn't exist or isn't the user's", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([]); // activity lookup — not found
+
+    const res = await request(app).get("/api/activities/not-mine");
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns the activity with a null route and null notes when there are no dumps", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([makeActivityRow()]) // activity lookup
+      .mockResolvedValueOnce([]); // dumps
+
+    const res = await request(app).get("/api/activities/act-1");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe("act-1");
+    expect(res.body.data.route).toBeNull();
+    expect(res.body.data.notes).toBeNull();
+  });
+
+  it("decodes the route from the list dump's summary_polyline", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([makeActivityRow()]) // activity lookup
+      .mockResolvedValueOnce([
+        { activity_id: "act-1", source: "list", payload: { map: { summary_polyline: validPolyline } } },
+      ]); // dumps
+
+    const res = await request(app).get("/api/activities/act-1");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.route).toHaveLength(3);
+  });
+
+  it("builds the notes block from list+detail dumps, reusing the export's formatting", async () => {
+    mockSql
+      .mockResolvedValueOnce([{ id: "user-1" }]) // users
+      .mockResolvedValueOnce([makeActivityRow()]) // activity lookup
+      .mockResolvedValueOnce([
+        { activity_id: "act-1", source: "list", payload: { workout_type: 1, suffer_score: 87 } },
+        { activity_id: "act-1", source: "detail", payload: { description: "Felt strong" } },
+      ]); // dumps
+
+    const res = await request(app).get("/api/activities/act-1");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.notes).toContain("race, effort 87");
+    expect(res.body.data.notes).toContain('"Felt strong"');
+  });
+});

@@ -4,6 +4,7 @@ import { syncActivities } from "../services/sync.service.js";
 import {
   buildTrainingMarkdown,
   buildTrainingSummary,
+  buildActivityNote,
   type ActivityDumpPayloads,
 } from "../lib/training-export.js";
 import { buildActivityRoutes, type RoutePolylineRow } from "../lib/polyline.js";
@@ -182,4 +183,41 @@ activitiesRouter.post("/sync", async (req, res) => {
     const statusCode = message === "RATE_LIMIT_EXCEEDED" ? 429 : 500;
     return res.status(statusCode).json({ error: message, statusCode });
   }
+});
+
+// GET /activities/:id — a single activity's full detail: the flattened row,
+// its decoded route (if it has GPS data), and a formatted notes block reusing
+// the same workout-type/effort/cadence/description/splits/best-efforts
+// rendering already built for the Claude export (buildActivityNote). Registered
+// last so this param route never shadows the literal /routes and /export paths
+// above it — Express matches GET routes in registration order.
+activitiesRouter.get("/:id", async (req, res) => {
+  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  if (!user) return res.status(404).json({ error: "Not found", statusCode: 404 });
+
+  const [activity] = await sql<ActivityRow[]>`
+    SELECT * FROM activities WHERE id = ${req.params.id} AND user_id = ${user.id}
+  `;
+  if (!activity) return res.status(404).json({ error: "Not found", statusCode: 404 });
+
+  const dumps = await fetchDumpsForActivities([activity.id]);
+  const activityDumps = dumps[activity.id];
+
+  const routes = buildActivityRoutes([
+    {
+      activity_id: activity.id,
+      activity_name: activity.name,
+      type: activity.type,
+      local_date: new Date(activity.start_date_local).toISOString().slice(0, 10),
+      summary_polyline: (activityDumps?.list?.map as { summary_polyline?: string } | undefined)?.summary_polyline ?? null,
+    },
+  ]);
+
+  return res.json({
+    data: {
+      ...activity,
+      route: routes[0]?.points ?? null,
+      notes: buildActivityNote(activity, activityDumps),
+    },
+  });
 });

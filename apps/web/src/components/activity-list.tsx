@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SyncButton } from "./sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
 import { API_URL } from "@/lib/api";
@@ -31,9 +32,9 @@ export async function ActivityList() {
         </div>
         <div className="flex items-center gap-3">
           <SyncButton />
-          <a href="/runs" className="text-xs text-brand-500 hover:text-brand-400 transition-colors">
+          <Link href="/runs" className="text-xs text-brand-500 hover:text-brand-400 transition-colors">
             View all
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -45,15 +46,17 @@ export async function ActivityList() {
         <ul className="divide-y divide-neutral-800/50">
           {activities.map((act) => (
             <li key={act.id} className="flex items-center justify-between gap-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
+              <Link href={`/runs/${act.id}`} className="flex min-w-0 items-center gap-3 group">
                 <span className="text-lg" aria-hidden>
                   {ACTIVITY_TYPE_ICON[act.type] ?? "🏃"}
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{act.name}</p>
+                  <p className="truncate text-sm font-medium group-hover:text-brand-400 transition-colors">
+                    {act.name}
+                  </p>
                   <p className="text-xs text-neutral-500">{formatDate(act.start_date_local)}</p>
                 </div>
-              </div>
+              </Link>
               <div className="flex shrink-0 gap-4 text-right text-xs tabular-nums">
                 <span>{formatDistance(act.distance)}</span>
                 <span className="text-neutral-400">{formatTime(act.moving_time)}</span>

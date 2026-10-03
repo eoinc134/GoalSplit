@@ -84,7 +84,8 @@ function buildExtraLines(detail: RawDump): string[] {
 // Builds an optional per-activity note from the raw dumps: workout type, Strava's
 // relative-effort score, cadence, splits, best efforts, and any description you
 // wrote on the activity. Returns null when there's nothing beyond the table row.
-function buildActivityNote(activity: ActivityRow, dumps?: ActivityDumpPayloads): string | null {
+// Exported for reuse by the single-activity detail endpoint (activities.ts).
+export function buildActivityNote(activity: ActivityRow, dumps?: ActivityDumpPayloads): string | null {
   const headerBits = buildHeaderBits(dumps?.list ?? {});
   const extraLines = buildExtraLines(dumps?.detail ?? {});
 

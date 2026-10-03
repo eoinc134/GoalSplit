@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SyncButton } from "@/components/sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
 import { API_URL } from "@/lib/api";
@@ -101,13 +102,15 @@ export default async function RunsPage({ searchParams }: Readonly<RunsPageProps>
               {activities.map((act) => (
                 <tr key={act.id} className="hover:bg-neutral-800/30 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                    <Link href={`/runs/${act.id}`} className="flex items-center gap-2 group">
                       <span aria-hidden>{ACTIVITY_TYPE_ICON[act.type] ?? "🏃"}</span>
                       <div>
-                        <p className="font-medium truncate max-w-[180px]">{act.name}</p>
+                        <p className="font-medium truncate max-w-[180px] group-hover:text-brand-400 transition-colors">
+                          {act.name}
+                        </p>
                         <p className="text-xs text-neutral-500">{act.sport_type}</p>
                       </div>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-neutral-400 whitespace-nowrap">
                     {formatDate(act.start_date_local, true)}

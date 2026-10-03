@@ -12,3 +12,11 @@ export interface ActivityRow {
   start_date: string;
   start_date_local: string;
 }
+
+export interface ActivityDetail extends ActivityRow {
+  elapsed_time: number;      // seconds
+  max_speed: number;         // m/s
+  max_heartrate: number | null;
+  route: [number, number][] | null; // [lat, lng], null when no GPS data
+  notes: string | null;      // formatted workout type/effort/cadence/description/splits/best-efforts block
+}

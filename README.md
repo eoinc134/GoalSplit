@@ -93,6 +93,7 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `DELETE` | `/api/auth/strava` | Disconnect Strava |
 | `GET` | `/api/activities` | List synced activities (`?type=Run&limit=50`) |
 | `GET` | `/api/activities/export` | Recent training log for Claude (`?days=30&type=Run&format=markdown`) |
+| `GET` | `/api/activities/:id` | Single activity detail: flattened row + decoded route + formatted notes |
 | `POST` | `/api/activities/sync` | Sync latest activities from Strava |
 | `POST` | `/api/activities/sync?full=true` | Backfill: walk full Strava history, fill in missing detail/streams dumps |
 | `GET` | `/api/dashboard/stats` | Aggregated dashboard stats |
@@ -100,7 +101,7 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/training/trends` | Weekly volume-by-type + Run pace (`?weeks=1-52`, default 12) |
 | `GET` | `/api/training/hr-zones` | Time-in-HR-zone breakdown (`?days=7-180`, default 28) |
 | `GET` | `/api/training/hr-drift` | Aerobic decoupling for recent qualifying runs (`?days=7-365&limit=1-50`, defaults 90/30) |
-| `GET` | `/api/activities/routes` | Decoded route polylines for the map view |
+| `GET` | `/api/activities/routes` | Decoded route polylines for the map view (all activities) |
 | `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
 | `POST` | `/api/prs` | Add a manual personal record |
 | `DELETE` | `/api/prs/:id` | Remove a manual personal record |
@@ -223,6 +224,12 @@ activity type, using the low-resolution `summary_polyline` already present in ev
 activity's cheap `list` dump — **no streams backfill needed**, unlike the HR-zone
 sections above. Decoding happens server-side (`apps/api/src/lib/polyline.ts`), so the
 client never needs a polyline library either.
+
+Clicking an activity (on the Dashboard or the Activities page) opens `/runs/[id]`, a
+detail view with that single activity's own route map (the same Leaflet component, fed
+one route instead of all of them), its core stats, and a formatted notes block reusing
+the same workout-type/effort/cadence/description/splits/best-efforts rendering built for
+the Claude training-log export (`buildActivityNote` in `apps/api/src/lib/training-export.ts`).
 
 ## Roadmap
 
