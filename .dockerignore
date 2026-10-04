@@ -1,0 +1,29 @@
+# Critical, not just for image size: locally-built node_modules/dist carry
+# Windows-compiled native addons (better-sqlite3) and stale build output that
+# must not end up in the Linux image — apps/api/Dockerfile does a fresh
+# `npm ci` + `turbo build` instead.
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+.next
+**/.next
+.turbo
+
+.git
+coverage
+*.tsbuildinfo
+
+# env files and secrets — never bake these into an image layer
+.env
+.env.local
+.env*.local
+
+# Garmin health data (garmy's local SQLite mirror)
+*.db
+*.db-journal
+
+.DS_Store
+npm-debug.log*

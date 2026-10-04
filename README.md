@@ -323,19 +323,26 @@ FRONTEND_URL          → https://<web-domain>.railway.app
 
 ### Deploying Garmin support
 
-Three extra things on top of the API service above — none of this is needed if you're
-only running Strava-based features.
+Running Garmin sync in production needs Python, which the default Nixpacks build (the
+plain Strava-only setup in the table above) doesn't provide — skip this whole section if
+you're not using Garmin; the rest of the app works fine without it.
 
-1. **`nixpacks.toml`** (repo root) tells Railway's Nixpacks builder to also install
-   Python + `garmy[localdb]` alongside the auto-detected Node build, as an additive
-   phase rather than replacing anything Node-related — the existing Build/Start Command
-   settings above are untouched. Hit `spawn garmy-sync ENOENT` on the first real deploy —
-   the pip-installed `garmy-sync` console script's bin directory isn't reliably on `PATH`
-   at runtime even though the install itself succeeds — so
-   `apps/api/src/services/garmin-sync.service.ts` invokes garmy via
-   `python3 -m garmy.localdb.cli` instead of the `garmy-sync` binary, which only needs
-   `python3` itself on `PATH` (reliable — it's the actual Nix package, not a pip
-   console-script wrapper).
+1. **Switch the API service's builder to Dockerfile.** In the Railway dashboard:
+   Settings → Build → Builder → `Dockerfile`, Dockerfile path → `apps/api/Dockerfile`.
+   Build context stays the repo root (not `apps/api/`) — the Dockerfile needs the whole
+   npm-workspaces monorepo, not just that one package. This replaces the Build/Start
+   Command fields from the table above entirely; a Dockerfile defines its own `CMD`, so
+   those dashboard fields are ignored once the builder is Dockerfile.
+
+   This replaces an earlier Nixpacks-custom-phase attempt that failed twice in a row on
+   real deploys — `garmy-sync` not resolving on `PATH` at runtime, then (after switching
+   to `python3 -m garmy.localdb.cli`) `python3` itself not on `PATH` at runtime either,
+   even though the build step's `pip install` had succeeded both times. Nixpacks' handling
+   of a custom additive phase's packages at runtime wasn't something verifiable without a
+   real deploy, and two failed guesses was the signal to stop guessing — a Dockerfile is
+   standard, inspectable Docker semantics instead of third-party-buildpack internals.
+   **Test it locally first if you can** — `docker build -f apps/api/Dockerfile .` from the
+   repo root — before pushing to Railway again.
 2. **A persistent Volume**, mounted on the API service (e.g. at `/data`) — Railway's
    filesystem is otherwise wiped on every redeploy, which would force garmy to re-walk
    your *entire* Garmin history from scratch each time (slow, and a real risk of
