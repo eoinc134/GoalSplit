@@ -241,13 +241,27 @@ doesn't expose resting HR, HRV, Body Battery, or training readiness, which is th
 point of this integration. [garmy](https://github.com/bes-dev/garmy) (Python, unofficial —
 built on the same reverse-engineered Garmin Connect login flow as the long-running
 `python-garminconnect`/GarminDB community tools) documents all of them, with a local
-SQLite mirror and incremental, dedup-aware sync. **No custom Python code was written** —
-the API shells out to garmy's own sync CLI (as `python3 -m garmy.localdb.cli`, not the
-pip-installed `garmy-sync` binary — see the deployment note below), then reads the
-resulting SQLite file directly with `better-sqlite3` and mirrors the rows into Postgres
+SQLite mirror and incremental, dedup-aware sync. The API shells out to a small wrapper
+script (`apps/api/scripts/garmy_sync.py`), then reads the resulting SQLite file directly
+with `better-sqlite3` and mirrors the rows into Postgres
 (`apps/api/src/services/garmin-sync.service.ts`). That SQLite file is garmy's own
 "never re-fetch" cache, playing the same role `activity_dumps` plays for Strava — the
 Postgres `garmin_days` table is a derived, re-buildable copy, not a second source of truth.
+
+**Why a wrapper script instead of garmy's own CLI (`garmy.localdb.cli`):** two real
+problems, both found live in production. First, that CLI's `get_credentials()` always
+prompts interactively (`input()`/`getpass.getpass()`) — there's no env-var auth anywhere
+in the package, so a non-interactive background process just hangs on a prompt nothing
+will ever answer. Second, and more consequential: `SyncManager.initialize()` always
+performs a brand-new full OAuth/SSO login, even though garmy's own `AuthClient` supports
+loading a previously-saved session from disk and refreshing an expired token without a
+full re-login. A background service re-logging in from scratch on every single sync is
+what tripped Garmin's SSO rate limiting (`429 Too Many Requests`) after a handful of test
+syncs in a short window. The wrapper script uses garmy's own public API directly (no
+changes to garmy itself) in the order cached session → token refresh → full login, and
+only ever falls all the way through to a full login on the very first sync or after
+extended inactivity. Tokens are cached in a `garmy-tokens/` directory next to the SQLite
+db, so they live on the same persistent Volume and survive restarts/redeploys.
 
 ### Setup
 
@@ -354,6 +368,10 @@ you're not using Garmin; the rest of the app works fine without it.
    `GARMIN_PASSWORD` as API service environment variables (same place as the Strava vars
    above) — **double check this if you set the env vars before deciding the mount path**,
    a mismatch here means garmy silently starts a fresh, empty database on next deploy.
+   The cached login session (see "Why a wrapper script" above) lives in a `garmy-tokens/`
+   directory next to this file automatically — no separate env var — so it's on the same
+   Volume and survives redeploys too, which is what actually keeps the rate-limiting risk
+   in point 2 from recurring on every sync rather than just the first one.
 
 Sync stays manual (click **Sync Garmin** on `/recovery`) unless you also set up a
 Railway Cron Job to hit `POST /api/garmin/sync` on a schedule — not required, just a

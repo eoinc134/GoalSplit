@@ -1,18 +1,23 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import Database from "better-sqlite3";
 import { sql } from "../db/index.js";
 import { validateGarminConfig, toGarminDayPoint, type GarminDayRow } from "../lib/garmin.js";
 import type { GarminSyncResult, GarminSyncStatus } from "@goalsplit/types";
 
-// Invoked as `python3 -m garmy.localdb.cli` rather than the pip-installed
-// `garmy-sync` console script — the console script's wrapper lives in pip's
-// bin directory, which isn't reliably on PATH in every environment (hit this
-// exact failure on Railway: `spawn garmy-sync ENOENT`, even though garmy
-// itself was correctly installed). `garmy.localdb.cli` has a `__main__` guard
-// (`python -m <module> <args>` runs `main()` with sys.argv the normal way,
-// identical to the console script) and only depends on `python3` itself being
-// on PATH, which is a far safer assumption than a pip console-script's bin dir.
-const PYTHON_MODULE = "garmy.localdb.cli";
+// Invoked via our own apps/api/scripts/garmy_sync.py, not garmy's own CLI
+// (garmy.localdb.cli) — that CLI has two problems for unattended, server-side
+// use: `cmd_sync` always prompts interactively for credentials (no env-var
+// support anywhere in the package — confirmed by reading the published
+// sdist), and `SyncManager.initialize()` always performs a brand-new full
+// OAuth/SSO login, even though garmy's own `AuthClient` supports loading a
+// cached session from disk and refreshing an expired token without a full
+// re-login. A background service doing a full login on every sync is what
+// tripped Garmin's SSO rate limiting (429) in production — our wrapper tries
+// cached session, then refresh, then full login, in that order (see the
+// script itself for details). It's resolved relative to this compiled file
+// (not the process CWD) since the Dockerfile's CMD runs from the repo root.
+const SYNC_SCRIPT = path.join(__dirname, "..", "..", "scripts", "garmy_sync.py");
 
 // A cold login + multi-day backfill can run well past a minute, which is well
 // past Railway's edge-proxy timeout — confirmed in production: the HTTP
@@ -60,37 +65,22 @@ export function startGarminSync(userId: string, days: number): void {
 
 function runGarmySync(days: number, config: { email: string; password: string; dbPath: string }): Promise<void> {
   return new Promise((resolve, reject) => {
-    // garmy's CLI (v2.0.0) has NO env-var-based auth at all — `cmd_sync` in
-    // localdb/cli.py unconditionally calls input()/getpass.getpass() for
-    // credentials, and there's no GARMIN_EMAIL/GARMIN_PASSWORD support
-    // anywhere in the package (confirmed by grepping the published sdist).
-    // This is what caused the production hang: the process sat on a stdin
-    // prompt nothing was ever going to answer. Feeding credentials via
-    // stdin works because Python's getpass falls back to a plain stdin read
-    // once it can't open /dev/tty (no controlling terminal on a spawned
-    // child), which is exactly this case. --db-path must also be passed as
-    // an explicit arg — the CLI never reads GARMY_DB_PATH either, so without
-    // this it would've written to a default `health.db` in the container's
-    // ephemeral CWD instead of the persistent Volume. It has to come BEFORE
-    // the `sync` subcommand, not after — argparse defines --db-path on the
-    // parent parser, not the `sync` subparser, and a parent-only option
-    // can't appear after the subcommand token (confirmed in production:
-    // `error: unrecognized arguments: --db-path ...` when it was placed
-    // after `sync`).
+    // Tokens live in a directory next to the SQLite db itself, so they're on
+    // the same persistent Volume and survive restarts/redeploys just like
+    // the db file does.
+    const tokenDir = path.join(path.dirname(config.dbPath), "garmy-tokens");
+
     const child = spawn(
       "python3",
-      ["-m", PYTHON_MODULE, "--db-path", config.dbPath, "sync", "--last-days", String(days), "--progress", "simple"],
-      { env: process.env },
+      [SYNC_SCRIPT, "--db-path", config.dbPath, "--token-dir", tokenDir, "--last-days", String(days)],
+      { env: { ...process.env, GARMIN_EMAIL: config.email, GARMIN_PASSWORD: config.password } },
     );
 
-    // Stream garmy's own output live into Railway's logs as it happens,
-    // rather than only after the process exits — the whole point is to be
-    // able to see where a run is stuck instead of guessing blind again.
+    // Stream the script's own output live into Railway's logs as it
+    // happens, rather than only after the process exits — the whole point
+    // is to be able to see where a run is stuck instead of guessing blind.
     child.stdout.on("data", (chunk: Buffer) => console.log(`[garmy-sync] ${chunk.toString().trimEnd()}`));
     child.stderr.on("data", (chunk: Buffer) => console.error(`[garmy-sync] ${chunk.toString().trimEnd()}`));
-
-    child.stdin.write(`${config.email}\n${config.password}\n`);
-    child.stdin.end();
 
     const timer = setTimeout(() => {
       child.kill("SIGKILL");

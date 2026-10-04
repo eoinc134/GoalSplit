@@ -106,21 +106,17 @@ describe("syncGarminDays", () => {
     await expect(promise).rejects.toThrow("GARMIN_SYNC_FAILED");
   });
 
-  it("invokes garmy via `python3 -m garmy.localdb.cli`, not the garmy-sync console script", async () => {
+  it("invokes our garmy_sync.py wrapper with --db-path, --token-dir, and --last-days", async () => {
     const promise = syncGarminDays("user-1", 7);
-    const [file, args] = mockSpawn.mock.calls[0];
+    const [file, args, options] = mockSpawn.mock.calls[0];
     expect(file).toBe("python3");
-    expect(args).toEqual(["-m", "garmy.localdb.cli", "--db-path", "./test-health.db", "sync", "--last-days", "7", "--progress", "simple"]);
+    expect(args[0]).toMatch(/garmy_sync\.py$/);
+    expect(args.slice(1)).toEqual(["--db-path", "./test-health.db", "--token-dir", "garmy-tokens", "--last-days", "7"]);
+    expect((options as { env: Record<string, string> }).env).toMatchObject({
+      GARMIN_EMAIL: "me@example.com",
+      GARMIN_PASSWORD: "secret",
+    });
     lastSpawnedChild().emit("exit", 0);
-    await promise;
-  });
-
-  it("pipes credentials to stdin instead of env vars — garmy's CLI has no env-var auth and always prompts", async () => {
-    const promise = syncGarminDays("user-1", 7);
-    const child = lastSpawnedChild();
-    expect(child.stdin.write).toHaveBeenCalledWith("me@example.com\nsecret\n");
-    expect(child.stdin.end).toHaveBeenCalled();
-    child.emit("exit", 0);
     await promise;
   });
 
