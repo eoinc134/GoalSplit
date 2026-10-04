@@ -71,10 +71,15 @@ function runGarmySync(days: number, config: { email: string; password: string; d
     // child), which is exactly this case. --db-path must also be passed as
     // an explicit arg — the CLI never reads GARMY_DB_PATH either, so without
     // this it would've written to a default `health.db` in the container's
-    // ephemeral CWD instead of the persistent Volume.
+    // ephemeral CWD instead of the persistent Volume. It has to come BEFORE
+    // the `sync` subcommand, not after — argparse defines --db-path on the
+    // parent parser, not the `sync` subparser, and a parent-only option
+    // can't appear after the subcommand token (confirmed in production:
+    // `error: unrecognized arguments: --db-path ...` when it was placed
+    // after `sync`).
     const child = spawn(
       "python3",
-      ["-m", PYTHON_MODULE, "sync", "--last-days", String(days), "--db-path", config.dbPath, "--progress", "simple"],
+      ["-m", PYTHON_MODULE, "--db-path", config.dbPath, "sync", "--last-days", String(days), "--progress", "simple"],
       { env: process.env },
     );
 

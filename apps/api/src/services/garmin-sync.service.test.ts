@@ -110,7 +110,7 @@ describe("syncGarminDays", () => {
     const promise = syncGarminDays("user-1", 7);
     const [file, args] = mockSpawn.mock.calls[0];
     expect(file).toBe("python3");
-    expect(args).toEqual(["-m", "garmy.localdb.cli", "sync", "--last-days", "7", "--db-path", "./test-health.db", "--progress", "simple"]);
+    expect(args).toEqual(["-m", "garmy.localdb.cli", "--db-path", "./test-health.db", "sync", "--last-days", "7", "--progress", "simple"]);
     lastSpawnedChild().emit("exit", 0);
     await promise;
   });
