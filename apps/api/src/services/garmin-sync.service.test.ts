@@ -52,9 +52,15 @@ function makeRow(overrides: Record<string, unknown> = {}) {
 
 // A fake child_process.ChildProcess: stdout/stderr emitters + exit/error events.
 function makeFakeChild() {
-  const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
+    kill: ReturnType<typeof vi.fn>;
+  };
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
+  child.stdin = { write: vi.fn(), end: vi.fn() };
   child.kill = vi.fn();
   return child;
 }
@@ -102,15 +108,19 @@ describe("syncGarminDays", () => {
 
   it("invokes garmy via `python3 -m garmy.localdb.cli`, not the garmy-sync console script", async () => {
     const promise = syncGarminDays("user-1", 7);
-    const [file, args, options] = mockSpawn.mock.calls[0];
+    const [file, args] = mockSpawn.mock.calls[0];
     expect(file).toBe("python3");
-    expect(args).toEqual(["-m", "garmy.localdb.cli", "sync", "--last-days", "7"]);
-    expect((options as { env: Record<string, string> }).env).toMatchObject({
-      GARMIN_EMAIL: "me@example.com",
-      GARMIN_PASSWORD: "secret",
-      GARMY_DB_PATH: "./test-health.db",
-    });
+    expect(args).toEqual(["-m", "garmy.localdb.cli", "sync", "--last-days", "7", "--db-path", "./test-health.db", "--progress", "simple"]);
     lastSpawnedChild().emit("exit", 0);
+    await promise;
+  });
+
+  it("pipes credentials to stdin instead of env vars — garmy's CLI has no env-var auth and always prompts", async () => {
+    const promise = syncGarminDays("user-1", 7);
+    const child = lastSpawnedChild();
+    expect(child.stdin.write).toHaveBeenCalledWith("me@example.com\nsecret\n");
+    expect(child.stdin.end).toHaveBeenCalled();
+    child.emit("exit", 0);
     await promise;
   });
 

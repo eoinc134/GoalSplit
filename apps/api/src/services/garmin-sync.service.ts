@@ -60,15 +60,32 @@ export function startGarminSync(userId: string, days: number): void {
 
 function runGarmySync(days: number, config: { email: string; password: string; dbPath: string }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", ["-m", PYTHON_MODULE, "sync", "--last-days", String(days)], {
-      env: { ...process.env, GARMIN_EMAIL: config.email, GARMIN_PASSWORD: config.password, GARMY_DB_PATH: config.dbPath },
-    });
+    // garmy's CLI (v2.0.0) has NO env-var-based auth at all — `cmd_sync` in
+    // localdb/cli.py unconditionally calls input()/getpass.getpass() for
+    // credentials, and there's no GARMIN_EMAIL/GARMIN_PASSWORD support
+    // anywhere in the package (confirmed by grepping the published sdist).
+    // This is what caused the production hang: the process sat on a stdin
+    // prompt nothing was ever going to answer. Feeding credentials via
+    // stdin works because Python's getpass falls back to a plain stdin read
+    // once it can't open /dev/tty (no controlling terminal on a spawned
+    // child), which is exactly this case. --db-path must also be passed as
+    // an explicit arg — the CLI never reads GARMY_DB_PATH either, so without
+    // this it would've written to a default `health.db` in the container's
+    // ephemeral CWD instead of the persistent Volume.
+    const child = spawn(
+      "python3",
+      ["-m", PYTHON_MODULE, "sync", "--last-days", String(days), "--db-path", config.dbPath, "--progress", "simple"],
+      { env: process.env },
+    );
 
     // Stream garmy's own output live into Railway's logs as it happens,
     // rather than only after the process exits — the whole point is to be
     // able to see where a run is stuck instead of guessing blind again.
     child.stdout.on("data", (chunk: Buffer) => console.log(`[garmy-sync] ${chunk.toString().trimEnd()}`));
     child.stderr.on("data", (chunk: Buffer) => console.error(`[garmy-sync] ${chunk.toString().trimEnd()}`));
+
+    child.stdin.write(`${config.email}\n${config.password}\n`);
+    child.stdin.end();
 
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
