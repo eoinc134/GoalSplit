@@ -356,8 +356,14 @@ you're not using Garmin; the rest of the app works fine without it.
    of a custom additive phase's packages at runtime wasn't something verifiable without a
    real deploy, and two failed guesses was the signal to stop guessing — a Dockerfile is
    standard, inspectable Docker semantics instead of third-party-buildpack internals.
-   **Test it locally first if you can** — `docker build -f apps/api/Dockerfile .` from the
-   repo root — before pushing to Railway again.
+   **Test it locally first if you can — and actually run the image, not just build it.**
+   `docker build -f apps/api/Dockerfile -t goalsplit-api .` from the repo root, then
+   `docker run --rm goalsplit-api node -e "require('better-sqlite3')"` to confirm the
+   native module actually loads. This isn't hypothetical caution: a real bug (the
+   Dockerfile's base image being on a Node version older than `better-sqlite3` requires)
+   sat completely hidden for a while because `docker build` succeeding says nothing about
+   whether a native module will load at runtime — `tsc` type-checks, it doesn't execute.
+   It only surfaced once the image was actually run.
 2. **A persistent Volume**, mounted on the API service (e.g. at `/data`) — Railway's
    filesystem is otherwise wiped on every redeploy, which would force garmy to re-walk
    your *entire* Garmin history from scratch each time (slow, and a real risk of

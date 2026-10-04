@@ -31,7 +31,7 @@ const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
 
 function latestPr(records: PrRecord[]): PrRecord | null {
   if (records.length === 0) return null;
-  return records.reduce((latest, r) => (r.achievedDate > latest.achievedDate ? r : latest));
+  return records.reduce((latest, r) => (r.achievedDate > latest.achievedDate ? r : latest), records[0]);
 }
 
 interface DashboardPageProps {
