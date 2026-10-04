@@ -108,7 +108,8 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
 | `POST` | `/api/prs` | Add a manual personal record |
 | `DELETE` | `/api/prs/:id` | Remove a manual personal record |
-| `POST` | `/api/garmin/sync` | Sync recent days from Garmin via garmy (`?days=1-365`, default 7) |
+| `POST` | `/api/garmin/sync` | Starts a Garmin sync in the background and returns `202` immediately (`?days=1-365`, default 7) — a cold login + backfill can run for several minutes, well past a typical edge-proxy timeout, so this never blocks on garmy finishing. Poll the status endpoint below instead of awaiting this. |
+| `GET` | `/api/garmin/sync/status` | Current/last sync job status: `idle \| running \| done \| error`, plus the result or error once finished |
 | `GET` | `/api/garmin/days` | Synced daily Garmin wellness data (`?days=7-365`, default 90) |
 
 ## Training data → Claude

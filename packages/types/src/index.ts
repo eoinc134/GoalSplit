@@ -249,3 +249,15 @@ export interface GarminDaysResponse {
 export interface GarminSyncResult {
   synced: number;
 }
+
+// Garmin sync runs as a background job rather than inline on the HTTP request —
+// a cold login + multi-day backfill can run well past Railway's edge-proxy
+// timeout, which would otherwise kill the request before garmy finishes.
+export interface GarminSyncStatus {
+  state: "idle" | "running" | "done" | "error";
+  startedAt: string | null;
+  finishedAt: string | null;
+  days: number | null;
+  result: GarminSyncResult | null;
+  error: string | null;
+}

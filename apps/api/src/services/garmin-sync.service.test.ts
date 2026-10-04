@@ -1,6 +1,7 @@
+import { EventEmitter } from "node:events";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockExecFile, mockAll, mockClose, mockPrepare, mockDatabaseCtor } = vi.hoisted(() => {
+const { mockSpawn, mockAll, mockClose, mockPrepare, mockDatabaseCtor } = vi.hoisted(() => {
   const mockAll = vi.fn();
   const mockPrepare = vi.fn().mockReturnValue({ all: mockAll });
   const mockClose = vi.fn();
@@ -8,18 +9,11 @@ const { mockExecFile, mockAll, mockClose, mockPrepare, mockDatabaseCtor } = vi.h
   const mockDatabaseCtor = vi.fn().mockImplementation(function MockDatabase() {
     return { prepare: mockPrepare, close: mockClose };
   });
-  const mockExecFile = vi.fn(
-    (
-      _file: string,
-      _args: string[],
-      _options: unknown,
-      callback: (err: Error | null, stdout?: string, stderr?: string) => void,
-    ) => callback(null, "", ""),
-  );
-  return { mockExecFile, mockAll, mockClose, mockPrepare, mockDatabaseCtor };
+  const mockSpawn = vi.fn();
+  return { mockSpawn, mockAll, mockClose, mockPrepare, mockDatabaseCtor };
 });
 
-vi.mock("node:child_process", () => ({ execFile: mockExecFile }));
+vi.mock("node:child_process", () => ({ spawn: mockSpawn }));
 vi.mock("better-sqlite3", () => ({ default: mockDatabaseCtor }));
 
 vi.mock("../db/index.js", () => ({
@@ -28,7 +22,7 @@ vi.mock("../db/index.js", () => ({
 }));
 
 import { sql } from "../db/index.js";
-import { syncGarminDays } from "./garmin-sync.service.js";
+import { syncGarminDays, startGarminSync, getGarminSyncStatus } from "./garmin-sync.service.js";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -56,10 +50,24 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// A fake child_process.ChildProcess: stdout/stderr emitters + exit/error events.
+function makeFakeChild() {
+  const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  return child;
+}
+
+function lastSpawnedChild() {
+  return mockSpawn.mock.results[mockSpawn.mock.results.length - 1]?.value as ReturnType<typeof makeFakeChild>;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockSql.mockResolvedValue([]);
   mockAll.mockReturnValue([]);
+  mockSpawn.mockImplementation(() => makeFakeChild());
   for (const key of ENV_KEYS) originalEnv[key] = process.env[key];
   process.env.GARMIN_EMAIL = "me@example.com";
   process.env.GARMIN_PASSWORD = "secret";
@@ -77,17 +85,24 @@ describe("syncGarminDays", () => {
   it("throws GARMIN_NOT_CONFIGURED when env vars are missing", async () => {
     delete process.env.GARMIN_EMAIL;
     await expect(syncGarminDays("user-1", 7)).rejects.toThrow("GARMIN_NOT_CONFIGURED");
-    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 
-  it("surfaces a clear error when the garmy-sync CLI fails", async () => {
-    mockExecFile.mockImplementationOnce((_file, _args, _options, callback) => callback(new Error("spawn ENOENT")));
-    await expect(syncGarminDays("user-1", 7)).rejects.toThrow("GARMIN_SYNC_FAILED");
+  it("surfaces a clear error when the garmy-sync CLI fails to spawn", async () => {
+    const promise = syncGarminDays("user-1", 7);
+    lastSpawnedChild().emit("error", new Error("spawn ENOENT"));
+    await expect(promise).rejects.toThrow("GARMIN_SYNC_FAILED");
+  });
+
+  it("surfaces a clear error when the garmy-sync CLI exits non-zero", async () => {
+    const promise = syncGarminDays("user-1", 7);
+    lastSpawnedChild().emit("exit", 1);
+    await expect(promise).rejects.toThrow("GARMIN_SYNC_FAILED");
   });
 
   it("invokes garmy via `python3 -m garmy.localdb.cli`, not the garmy-sync console script", async () => {
-    await syncGarminDays("user-1", 7);
-    const [file, args, options] = mockExecFile.mock.calls[0];
+    const promise = syncGarminDays("user-1", 7);
+    const [file, args, options] = mockSpawn.mock.calls[0];
     expect(file).toBe("python3");
     expect(args).toEqual(["-m", "garmy.localdb.cli", "sync", "--last-days", "7"]);
     expect((options as { env: Record<string, string> }).env).toMatchObject({
@@ -95,12 +110,16 @@ describe("syncGarminDays", () => {
       GARMIN_PASSWORD: "secret",
       GARMY_DB_PATH: "./test-health.db",
     });
+    lastSpawnedChild().emit("exit", 0);
+    await promise;
   });
 
   it("reads daily_health_metrics from the SQLite file and upserts each row into Postgres", async () => {
     mockAll.mockReturnValue([makeRow(), makeRow({ metric_date: "2026-06-02" })]);
 
-    const result = await syncGarminDays("user-1", 7);
+    const promise = syncGarminDays("user-1", 7);
+    lastSpawnedChild().emit("exit", 0);
+    const result = await promise;
 
     expect(result.synced).toBe(2);
     expect(mockDatabaseCtor).toHaveBeenCalledWith("./test-health.db", { readonly: true });
@@ -111,7 +130,9 @@ describe("syncGarminDays", () => {
 
   it("returns zero synced when the SQLite file has no rows in range", async () => {
     mockAll.mockReturnValue([]);
-    const result = await syncGarminDays("user-1", 7);
+    const promise = syncGarminDays("user-1", 7);
+    lastSpawnedChild().emit("exit", 0);
+    const result = await promise;
     expect(result.synced).toBe(0);
     expect(mockSql).not.toHaveBeenCalled();
   });
@@ -120,7 +141,57 @@ describe("syncGarminDays", () => {
     mockPrepare.mockImplementationOnce(() => {
       throw new Error("corrupt db");
     });
-    await expect(syncGarminDays("user-1", 7)).rejects.toThrow("corrupt db");
+    const promise = syncGarminDays("user-1", 7);
+    lastSpawnedChild().emit("exit", 0);
+    await expect(promise).rejects.toThrow("corrupt db");
     expect(mockClose).toHaveBeenCalled();
+  });
+
+  it("kills the process and fails clearly if garmy hangs past the timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const promise = syncGarminDays("user-1", 7);
+      const child = lastSpawnedChild();
+      const assertion = expect(promise).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      await assertion;
+      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("startGarminSync / getGarminSyncStatus", () => {
+  it("starts idle", () => {
+    expect(getGarminSyncStatus().state).toBe("idle");
+  });
+
+  it("throws GARMIN_NOT_CONFIGURED synchronously instead of starting a job", () => {
+    delete process.env.GARMIN_EMAIL;
+    expect(() => startGarminSync("user-1", 7)).toThrow("GARMIN_NOT_CONFIGURED");
+    expect(getGarminSyncStatus().state).toBe("idle");
+  });
+
+  it("moves to running immediately, then done once garmy exits cleanly", async () => {
+    startGarminSync("user-1", 7);
+    expect(getGarminSyncStatus().state).toBe("running");
+
+    lastSpawnedChild().emit("exit", 0);
+    await vi.waitFor(() => expect(getGarminSyncStatus().state).toBe("done"));
+    expect(getGarminSyncStatus().result).toEqual({ synced: 0 });
+  });
+
+  it("moves to error with a message once garmy fails", async () => {
+    startGarminSync("user-1", 7);
+    lastSpawnedChild().emit("exit", 1);
+    await vi.waitFor(() => expect(getGarminSyncStatus().state).toBe("error"));
+    expect(getGarminSyncStatus().error).toMatch("GARMIN_SYNC_FAILED");
+  });
+
+  it("refuses to start a second sync while one is already running", () => {
+    startGarminSync("user-1", 7);
+    expect(() => startGarminSync("user-1", 7)).toThrow("GARMIN_SYNC_ALREADY_RUNNING");
+    lastSpawnedChild().emit("exit", 0);
   });
 });

@@ -1,15 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { GarminSyncResult } from "@goalsplit/types";
+import type { GarminSyncResult, GarminSyncStatus } from "@goalsplit/types";
 import { API_URL } from "@/lib/api";
+
+const POLL_INTERVAL_MS = 3000;
 
 export function GarminSyncButton() {
   const router = useRouter();
   const [state, setState] = useState<"idle" | "syncing" | "done" | "error">("idle");
   const [result, setResult] = useState<GarminSyncResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, []);
+
+  function pollStatus() {
+    pollRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/garmin/sync/status`);
+        const json = (await res.json()) as { data: GarminSyncStatus };
+        const status = json.data;
+
+        if (status.state === "done") {
+          setResult(status.result);
+          setState("done");
+          router.refresh();
+        } else if (status.state === "error") {
+          setErrorMsg(status.error ?? "Garmin sync failed");
+          setState("error");
+        } else {
+          pollStatus();
+        }
+      } catch {
+        // A transient network hiccup while polling shouldn't abandon the
+        // sync — the job keeps running server-side regardless; just retry.
+        pollStatus();
+      }
+    }, POLL_INTERVAL_MS);
+  }
 
   async function handleSync() {
     setState("syncing");
@@ -17,6 +51,9 @@ export function GarminSyncButton() {
     setErrorMsg(null);
 
     try {
+      // This only kicks the sync off — it returns as soon as the job starts,
+      // long before garmy itself finishes (a cold login + backfill can run
+      // for several minutes, well past Railway's edge-proxy timeout).
       const res = await fetch(`${API_URL}/garmin/sync?days=14`, { method: "POST" });
       const json = await res.json();
 
@@ -24,9 +61,7 @@ export function GarminSyncButton() {
         throw new Error(json.error ?? "Garmin sync failed");
       }
 
-      setResult(json.data as GarminSyncResult);
-      setState("done");
-      router.refresh();
+      pollStatus();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Garmin sync failed");
       setState("error");

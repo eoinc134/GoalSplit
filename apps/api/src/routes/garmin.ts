@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
-import { syncGarminDays } from "../services/garmin-sync.service.js";
+import { startGarminSync, getGarminSyncStatus } from "../services/garmin-sync.service.js";
 import { toGarminDayPoint, type GarminDayRow } from "../lib/garmin.js";
 
 export const garminRouter = Router();
 
+// Starts the sync in the background and returns immediately — a cold login +
+// multi-day backfill can run well past Railway's edge-proxy timeout, which
+// previously killed the request before garmy ever finished (confirmed in
+// production: 499/502 at 5 minutes, zero rows synced). Poll GET /sync/status
+// for progress instead of awaiting this request.
 garminRouter.post("/sync", async (req, res) => {
   const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
   if (!user) {
@@ -14,8 +19,8 @@ garminRouter.post("/sync", async (req, res) => {
   const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
 
   try {
-    const result = await syncGarminDays(user.id, days);
-    return res.json({ data: result });
+    startGarminSync(user.id, days);
+    return res.status(202).json({ data: getGarminSyncStatus() });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Garmin sync failed";
     if (message === "GARMIN_NOT_CONFIGURED") {
@@ -24,8 +29,15 @@ garminRouter.post("/sync", async (req, res) => {
         statusCode: 412,
       });
     }
+    if (message === "GARMIN_SYNC_ALREADY_RUNNING") {
+      return res.status(409).json({ error: "A Garmin sync is already running", statusCode: 409 });
+    }
     return res.status(500).json({ error: message, statusCode: 500 });
   }
+});
+
+garminRouter.get("/sync/status", (_req, res) => {
+  return res.json({ data: getGarminSyncStatus() });
 });
 
 garminRouter.get("/days", async (req, res) => {

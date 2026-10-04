@@ -7,18 +7,23 @@ vi.mock("../db/index.js", () => ({
 }));
 
 vi.mock("../services/garmin-sync.service.js", () => ({
-  syncGarminDays: vi.fn(),
+  startGarminSync: vi.fn(),
+  getGarminSyncStatus: vi.fn(),
 }));
 
 import { app } from "../app.js";
 import { sql } from "../db/index.js";
-import { syncGarminDays } from "../services/garmin-sync.service.js";
+import { startGarminSync, getGarminSyncStatus } from "../services/garmin-sync.service.js";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
-const mockSyncGarminDays = syncGarminDays as unknown as ReturnType<typeof vi.fn>;
+const mockStartGarminSync = startGarminSync as unknown as ReturnType<typeof vi.fn>;
+const mockGetGarminSyncStatus = getGarminSyncStatus as unknown as ReturnType<typeof vi.fn>;
+
+const IDLE_STATUS = { state: "idle", startedAt: null, finishedAt: null, days: null, result: null, error: null };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetGarminSyncStatus.mockReturnValue(IDLE_STATUS);
 });
 
 describe("POST /api/garmin/sync", () => {
@@ -26,12 +31,14 @@ describe("POST /api/garmin/sync", () => {
     mockSql.mockResolvedValueOnce([]); // users
     const res = await request(app).post("/api/garmin/sync");
     expect(res.status).toBe(401);
-    expect(mockSyncGarminDays).not.toHaveBeenCalled();
+    expect(mockStartGarminSync).not.toHaveBeenCalled();
   });
 
   it("returns 412 when Garmin env vars aren't configured", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
-    mockSyncGarminDays.mockRejectedValueOnce(new Error("GARMIN_NOT_CONFIGURED"));
+    mockStartGarminSync.mockImplementationOnce(() => {
+      throw new Error("GARMIN_NOT_CONFIGURED");
+    });
 
     const res = await request(app).post("/api/garmin/sync");
 
@@ -39,25 +46,37 @@ describe("POST /api/garmin/sync", () => {
     expect(res.body.error).toMatch(/GARMIN_EMAIL/);
   });
 
-  it("returns 500 with the error message when the sync itself fails", async () => {
+  it("returns 409 when a sync is already running", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
-    mockSyncGarminDays.mockRejectedValueOnce(new Error("GARMIN_SYNC_FAILED: spawn ENOENT"));
+    mockStartGarminSync.mockImplementationOnce(() => {
+      throw new Error("GARMIN_SYNC_ALREADY_RUNNING");
+    });
 
     const res = await request(app).post("/api/garmin/sync");
 
-    expect(res.status).toBe(500);
-    expect(res.body.error).toContain("GARMIN_SYNC_FAILED");
+    expect(res.status).toBe(409);
   });
 
-  it("returns the sync result on success and clamps days to 1-365", async () => {
+  it("starts the job and returns 202 immediately, clamping days to 1-365", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
-    mockSyncGarminDays.mockResolvedValueOnce({ synced: 7 });
+    mockGetGarminSyncStatus.mockReturnValue({ ...IDLE_STATUS, state: "running", days: 365 });
 
     const res = await request(app).post("/api/garmin/sync?days=9999");
 
+    expect(res.status).toBe(202);
+    expect(res.body.data.state).toBe("running");
+    expect(mockStartGarminSync).toHaveBeenCalledWith("user-1", 365);
+  });
+});
+
+describe("GET /api/garmin/sync/status", () => {
+  it("returns the current job status", async () => {
+    mockGetGarminSyncStatus.mockReturnValue({ ...IDLE_STATUS, state: "done", result: { synced: 7 } });
+
+    const res = await request(app).get("/api/garmin/sync/status");
+
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ synced: 7 });
-    expect(mockSyncGarminDays).toHaveBeenCalledWith("user-1", 365);
+    expect(res.body.data).toMatchObject({ state: "done", result: { synced: 7 } });
   });
 });
 
