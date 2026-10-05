@@ -22,6 +22,7 @@ only as the last resort. No changes to garmy itself.
 
 import argparse
 import os
+import sqlite3
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -53,6 +54,35 @@ def authenticate(token_dir: str, email: str, password: str) -> AuthClient:
     print("No valid cached session - performing full login")
     auth_client.login(email, password)
     return auth_client
+
+
+def print_failure_reasons(db_path: str, start_date: date, end_date: date) -> None:
+    # garmy's own ProgressReporter only ever logs "[date] metric (failed)" —
+    # the actual exception, though it IS captured (SyncManager._sync_date
+    # stores str(e) in sync_status.error_message), is never surfaced. Without
+    # this, a systematic failure (e.g. every "sleep" task across two weeks)
+    # looks identical in the log to a handful of unrelated one-off failures.
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT metric_type, error_message, COUNT(*)
+            FROM sync_status
+            WHERE status = 'failed' AND sync_date BETWEEN ? AND ?
+            GROUP BY metric_type, error_message
+            ORDER BY metric_type
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return
+
+    print("\nFailure reasons:")
+    for metric_type, error_message, count in rows:
+        print(f"  {metric_type} x{count}: {error_message}")
 
 
 def main() -> int:
@@ -109,6 +139,9 @@ def main() -> int:
     print(f"  Skipped: {stats['skipped']}")
     print(f"  Failed: {stats['failed']}")
     print(f"  Total tasks: {stats['total_tasks']}")
+
+    if stats["failed"]:
+        print_failure_reasons(args.db_path, start_date, end_date)
 
     return 0 if stats["failed"] == 0 else 1
 
