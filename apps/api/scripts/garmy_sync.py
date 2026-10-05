@@ -30,9 +30,64 @@ from pathlib import Path
 from garmy import APIClient, AuthClient
 from garmy.localdb.activities_iterator import ActivitiesIterator
 from garmy.localdb.config import LocalDBConfig
+from garmy.localdb.extractors import DataExtractor
 from garmy.localdb.models import MetricType
 from garmy.localdb.progress import ProgressReporter
 from garmy.localdb.sync import SyncManager
+from garmy.metrics.body_battery import BodyBattery
+from garmy.metrics.sleep import SleepSummary
+
+
+def patch_garmy_bugs() -> None:
+    """Patch three confirmed garmy 2.0.0 bugs, found by reading the published
+    source after they caused real sync failures in production. All three are
+    missing-null-data-handling bugs in garmy's own parsing/extraction code,
+    not anything in our integration — patched here rather than filed upstream
+    since we need this working now, not on garmy's release schedule.
+    """
+
+    # 1. SleepSummary.total_sleep_duration_hours does `self.sleep_time_seconds
+    # / 3600` with no null check, unlike its sibling properties (e.g.
+    # deep_sleep_percentage) which do guard with `if ... > 0`. Crashes with
+    # "unsupported operand type(s) for /: 'NoneType' and 'int'" on any day
+    # with no detected sleep session — which was every single day in a real
+    # 14-day sync, confirmed via garmy/metrics/sleep.py.
+    def _safe_total_sleep_duration_hours(self) -> "float | None":
+        seconds = self.sleep_time_seconds
+        return seconds / 3600 if seconds else None
+
+    SleepSummary.total_sleep_duration_hours = property(_safe_total_sleep_duration_hours)
+
+    # 2. extract_timeseries_data doesn't filter out None values before
+    # inserting into timeseries.value, which is NOT NULL — crashes on
+    # sqlite3.IntegrityError the first time Garmin's raw per-minute
+    # heart_rate/body_battery arrays contain a gap (e.g. watch off-wrist or
+    # charging). Wrapping rather than reimplementing the per-metric-type
+    # branching in garmy/localdb/extractors.py — just drop null readings
+    # after the fact, whichever metric type produced them.
+    original_extract_timeseries_data = DataExtractor.extract_timeseries_data
+
+    def _extract_timeseries_data_no_nulls(self, data, metric_type):
+        return [(ts, value, meta) for (ts, value, meta) in original_extract_timeseries_data(self, data, metric_type) if value is not None]
+
+    DataExtractor.extract_timeseries_data = _extract_timeseries_data_no_nulls
+
+    # 3. BodyBattery is a dataclass with body_battery_values_array as a
+    # required (no-default) field, but Garmin's API sometimes omits that key
+    # entirely for a given day — garmy/core/metrics.py constructs it via
+    # `self.metric_class(**filtered_kwargs)`, so a missing key means a
+    # missing kwarg, crashing with "BodyBattery.__init__() missing 1
+    # required positional argument" before extraction even runs. Default it
+    # to an empty list (same as "no readings", the correct interpretation
+    # of the data simply being absent).
+    original_body_battery_init = BodyBattery.__init__
+
+    def _body_battery_init_with_default(self, *args, **kwargs):
+        if "body_battery_values_array" not in kwargs and len(args) < 3:
+            kwargs["body_battery_values_array"] = []
+        original_body_battery_init(self, *args, **kwargs)
+
+    BodyBattery.__init__ = _body_battery_init_with_default
 
 
 def authenticate(token_dir: str, email: str, password: str) -> AuthClient:
@@ -86,6 +141,8 @@ def print_failure_reasons(db_path: str, start_date: date, end_date: date) -> Non
 
 
 def main() -> int:
+    patch_garmy_bugs()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--token-dir", required=True)
