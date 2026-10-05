@@ -43,3 +43,6 @@ yarn-error.log*
 next-env.d.ts
 
 PLAN.md
+local-garmy-tokens
+railway_key
+railway_key.pub

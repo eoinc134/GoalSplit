@@ -63,12 +63,16 @@ RUN npm ci --ignore-scripts
 # unpinned, unreviewed version on-demand if it were ever missing locally.
 RUN node_modules/.bin/turbo build --filter=@goalsplit/api
 
-# Run as the image's built-in non-root `node` user rather than root — this
-# app never needs root (binds to an unprivileged port, doesn't install
-# anything at runtime). chown happens before switching since the Volume is
-# mounted later, at container start, as this same `node` user.
-RUN chown -R node:node /app
-USER node
+# Stays on root rather than switching to the image's built-in `node` user.
+# Tried that (a real SonarQube hardening suggestion) and it broke Garmin sync
+# in production: `chown -R node:node /app` only covers /app, but the Railway
+# Volume (GARMY_DB_PATH's directory) is mounted later, at container start,
+# not at build time — it keeps whatever ownership Railway gives it, which
+# the non-root user couldn't write to ("attempt to write a readonly
+# database"). The correct fix for that is an entrypoint script that chowns
+# the Volume at startup (while still root) before dropping to a non-root
+# user to actually run the app — more moving parts than this single-service
+# app's actual risk profile justifies right now, so staying on root instead.
 
 ENV PORT=3001
 EXPOSE 3001
