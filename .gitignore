@@ -46,3 +46,10 @@ PLAN.md
 local-garmy-tokens
 railway_key
 railway_key.pub
+
+# Home-sync setup (Garmin credentials + Railway's public Postgres connection
+# string — see README's "Home-based Garmin sync" section)
+.env.home-sync
+garmin-home-sync.db
+garmy-tokens-home/
+home-sync.log

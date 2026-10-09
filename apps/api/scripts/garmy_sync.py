@@ -35,7 +35,7 @@ from garmy.localdb.models import MetricType
 from garmy.localdb.progress import ProgressReporter
 from garmy.localdb.sync import SyncManager
 from garmy.metrics.body_battery import BodyBattery
-from garmy.metrics.sleep import SleepSummary
+from garmy.metrics.sleep import Sleep, SleepSummary
 
 
 def patch_garmy_bugs() -> None:
@@ -47,16 +47,72 @@ def patch_garmy_bugs() -> None:
     """
 
     # 1. SleepSummary.total_sleep_duration_hours does `self.sleep_time_seconds
-    # / 3600` with no null check, unlike its sibling properties (e.g.
-    # deep_sleep_percentage) which do guard with `if ... > 0`. Crashes with
-    # "unsupported operand type(s) for /: 'NoneType' and 'int'" on any day
-    # with no detected sleep session — which was every single day in a real
-    # 14-day sync, confirmed via garmy/metrics/sleep.py.
+    # / 3600` with no null check at all — crashes with "unsupported operand
+    # type(s) for /: 'NoneType' and 'int'" on any day with no detected sleep
+    # session (every single day in one real 14-day sync).
     def _safe_total_sleep_duration_hours(self) -> "float | None":
         seconds = self.sleep_time_seconds
         return seconds / 3600 if seconds else None
 
     SleepSummary.total_sleep_duration_hours = property(_safe_total_sleep_duration_hours)
+
+    # 1b. Sleep's four *_percentage properties (deep/light/rem/awake) DO
+    # attempt a null guard — `if self.sleep_summary.sleep_time_seconds > 0:`
+    # — but the guard itself isn't null-safe: `None > 0` raises TypeError
+    # rather than evaluating falsy. Hit this for real on a day with a
+    # sleep_summary row present but sleep_time_seconds still None (e.g. the
+    # current day, in progress, no full night recorded yet) —
+    # "'>' not supported between instances of 'NoneType' and 'int'". My
+    # first pass at this fix (see 1. above) wrongly assumed these four were
+    # already safe; they aren't, on this exact input.
+    def _safe_sleep_percentage(numerator_attr: str):
+        def getter(self):
+            denom = getattr(self.sleep_summary, "sleep_time_seconds", None)
+            if not denom or denom <= 0:
+                return 0
+            numerator = getattr(self.sleep_summary, numerator_attr, None)
+            if numerator is None:
+                return 0
+            return (numerator / denom) * 100
+
+        return getter
+
+    Sleep.deep_sleep_percentage = property(_safe_sleep_percentage("deep_sleep_seconds"))
+    Sleep.light_sleep_percentage = property(_safe_sleep_percentage("light_sleep_seconds"))
+    Sleep.rem_sleep_percentage = property(_safe_sleep_percentage("rem_sleep_seconds"))
+    Sleep.awake_percentage = property(_safe_sleep_percentage("awake_sleep_seconds"))
+
+    # 1c. DataExtractor._extract_sleep_data itself has the SAME flawed
+    # pattern again, inline: `getattr(data.sleep_summary, 'deep_sleep_seconds',
+    # 0) > 0`. getattr's default (0) only applies when the attribute is
+    # MISSING — when it's present but None (e.g. a day with a sleep_summary
+    # row but no completed deep-sleep measurement yet), getattr returns
+    # None, and `None > 0` crashes with the exact same error as 1b, just one
+    # layer further out. This is inline logic in a dict literal, not a
+    # separable property, so the whole method is replaced rather than
+    # patched piecemeal.
+    def _safe_extract_sleep_data(self, data):
+        summary = getattr(data, "sleep_summary", None)
+
+        def hours_or_none(attr_name: str):
+            seconds = getattr(summary, attr_name, None) if summary else None
+            return seconds / 3600 if seconds else None
+
+        return {
+            "sleep_duration_hours": getattr(data, "sleep_duration_hours", None),
+            "deep_sleep_percentage": getattr(data, "deep_sleep_percentage", None),
+            "light_sleep_percentage": getattr(data, "light_sleep_percentage", None),
+            "rem_sleep_percentage": getattr(data, "rem_sleep_percentage", None),
+            "awake_percentage": getattr(data, "awake_percentage", None),
+            "deep_sleep_hours": hours_or_none("deep_sleep_seconds"),
+            "light_sleep_hours": hours_or_none("light_sleep_seconds"),
+            "rem_sleep_hours": hours_or_none("rem_sleep_seconds"),
+            "awake_hours": hours_or_none("awake_sleep_seconds"),
+            "average_spo2": getattr(summary, "average_sp_o2_value", None) if summary else None,
+            "average_respiration": getattr(summary, "average_respiration_value", None) if summary else None,
+        }
+
+    DataExtractor._extract_sleep_data = _safe_extract_sleep_data
 
     # 2. extract_timeseries_data doesn't filter out None values before
     # inserting into timeseries.value, which is NOT NULL — crashes on

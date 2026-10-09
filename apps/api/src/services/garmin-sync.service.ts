@@ -109,21 +109,16 @@ function runGarmySync(days: number, config: { email: string; password: string; d
   });
 }
 
-// garmy handles Garmin's own (reverse-engineered) auth, incremental sync, and
-// conflict resolution into its own SQLite file — this never talks to Garmin's
-// API directly. We only read the result back out.
-export async function syncGarminDays(userId: string, days: number): Promise<GarminSyncResult> {
-  const config = validateGarminConfig();
-  if (!config) throw new Error("GARMIN_NOT_CONFIGURED");
-
-  try {
-    await runGarmySync(days, config);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`GARMIN_SYNC_FAILED: ${message}`);
-  }
-
-  const db = new Database(config.dbPath, { readonly: true });
+// Reads garmy's local SQLite cache and upserts every row it finds into
+// Postgres — no date filtering, since re-importing a day already in
+// Postgres is a harmless no-op (ON CONFLICT DO UPDATE) and this needs to
+// work whether the SQLite file was just updated by a fresh sync or has
+// months of history sitting in it already. Exported standalone so a
+// separate machine can run this against the SQLite file garmy_sync.py
+// produced, independent of whether that same machine is the one running
+// the actual Garmin-talking half (see apps/api/src/scripts/import-garmin-days.ts).
+export async function importGarminDaysFromSqlite(dbPath: string, userId: string): Promise<GarminSyncResult> {
+  const db = new Database(dbPath, { readonly: true });
   let rows: GarminDayRow[];
   try {
     rows = db
@@ -133,10 +128,9 @@ export async function syncGarminDays(userId: string, days: number): Promise<Garm
                 sleep_duration_hours, training_readiness_score, training_readiness_level,
                 hrv_last_night_avg, hrv_status, total_steps
          FROM daily_health_metrics
-         WHERE metric_date >= date('now', ?)
          ORDER BY metric_date`,
       )
-      .all(`-${days} days`) as GarminDayRow[];
+      .all() as GarminDayRow[];
   } finally {
     db.close();
   }
@@ -176,4 +170,21 @@ export async function syncGarminDays(userId: string, days: number): Promise<Garm
   }
 
   return { synced: rows.length };
+}
+
+// garmy handles Garmin's own (reverse-engineered) auth, incremental sync, and
+// conflict resolution into its own SQLite file — this never talks to Garmin's
+// API directly. We only read the result back out.
+export async function syncGarminDays(userId: string, days: number): Promise<GarminSyncResult> {
+  const config = validateGarminConfig();
+  if (!config) throw new Error("GARMIN_NOT_CONFIGURED");
+
+  try {
+    await runGarmySync(days, config);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`GARMIN_SYNC_FAILED: ${message}`);
+  }
+
+  return importGarminDaysFromSqlite(config.dbPath, userId);
 }

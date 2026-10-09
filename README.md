@@ -108,7 +108,7 @@ STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback
 | `GET` | `/api/prs` | Merged personal records (Strava-derived + manual) |
 | `POST` | `/api/prs` | Add a manual personal record |
 | `DELETE` | `/api/prs/:id` | Remove a manual personal record |
-| `POST` | `/api/garmin/sync` | Starts a Garmin sync in the background and returns `202` immediately (`?days=1-365`, default 7) — a cold login + backfill can run for several minutes, well past a typical edge-proxy timeout, so this never blocks on garmy finishing. Poll the status endpoint below instead of awaiting this. |
+| `POST` | `/api/garmin/sync` | Starts a Garmin sync in the background and returns `202` immediately (`?days=1-365`, default 7) — a cold login + backfill can run for several minutes, well past a typical edge-proxy timeout, so this never blocks on garmy finishing. Poll the status endpoint below instead of awaiting this. Legacy manual fallback in production — see [Home-based Garmin sync](#home-based-garmin-sync) for why this generally fails from Railway now. |
 | `GET` | `/api/garmin/sync/status` | Current/last sync job status: `idle \| running \| done \| error`, plus the result or error once finished |
 | `GET` | `/api/garmin/days` | Synced daily Garmin wellness data (`?days=7-365`, default 90) |
 
@@ -290,8 +290,10 @@ Recovery page once this is set up.
   leaked.
 - This is the first non-Node runtime dependency in the repo — Python 3.8+ is now a local
   dev prerequisite, same tier as the existing Docker Desktop requirement.
-- **Railway deployment needs a few extra steps** beyond the two Node services covered
-  below — see [Deploying Garmin support](#deploying-garmin-support).
+- **Doesn't run from Railway at all** — Garmin blocks Railway's egress IP for its
+  OAuth endpoints (confirmed in production, not assumed). The actual sync runs from a
+  home machine on a schedule instead — see
+  [Home-based Garmin sync](#home-based-garmin-sync).
 
 ## Route maps
 
@@ -336,52 +338,47 @@ STRAVA_REDIRECT_URI   → https://<api-domain>.railway.app/api/auth/strava/callb
 FRONTEND_URL          → https://<web-domain>.railway.app
 ```
 
-### Deploying Garmin support
+### Home-based Garmin sync
 
-Running Garmin sync in production needs Python, which the default Nixpacks build (the
-plain Strava-only setup in the table above) doesn't provide — skip this whole section if
-you're not using Garmin; the rest of the app works fine without it.
+Garmin sync does **not** run from Railway — this was tried first (a Dockerfile +
+persistent Volume setup, same shape as every other service here) and abandoned after
+confirming in production that Garmin's API rejects Railway's egress IP for *every*
+`oauth-service` call, not just repeated login attempts: both the SSO login page and the
+supposedly-lightweight OAuth1→OAuth2 token refresh came back `429 Too Many Requests`,
+even hours apart and even with a session that had been bootstrapped from a trusted
+network. That rules out anything retry/backoff/caching can fix from inside Railway's
+network — the Garmin-talking half of the sync has to run somewhere Garmin doesn't block.
 
-1. **Switch the API service's builder to Dockerfile.** In the Railway dashboard:
-   Settings → Build → Builder → `Dockerfile`, Dockerfile path → `apps/api/Dockerfile`.
-   Build context stays the repo root (not `apps/api/`) — the Dockerfile needs the whole
-   npm-workspaces monorepo, not just that one package. This replaces the Build/Start
-   Command fields from the table above entirely; a Dockerfile defines its own `CMD`, so
-   those dashboard fields are ignored once the builder is Dockerfile.
+So it runs on a home machine instead, on a schedule, writing directly into Railway's
+Postgres over its *public* connection string — the app on Railway only ever reads
+`garmin_days`, it never talks to Garmin at all.
 
-   This replaces an earlier Nixpacks-custom-phase attempt that failed twice in a row on
-   real deploys — `garmy-sync` not resolving on `PATH` at runtime, then (after switching
-   to `python3 -m garmy.localdb.cli`) `python3` itself not on `PATH` at runtime either,
-   even though the build step's `pip install` had succeeded both times. Nixpacks' handling
-   of a custom additive phase's packages at runtime wasn't something verifiable without a
-   real deploy, and two failed guesses was the signal to stop guessing — a Dockerfile is
-   standard, inspectable Docker semantics instead of third-party-buildpack internals.
-   **Test it locally first if you can — and actually run the image, not just build it.**
-   `docker build -f apps/api/Dockerfile -t goalsplit-api .` from the repo root, then
-   `docker run --rm goalsplit-api node -e "require('better-sqlite3')"` to confirm the
-   native module actually loads. This isn't hypothetical caution: a real bug (the
-   Dockerfile's base image being on a Node version older than `better-sqlite3` requires)
-   sat completely hidden for a while because `docker build` succeeding says nothing about
-   whether a native module will load at runtime — `tsc` type-checks, it doesn't execute.
-   It only surfaced once the image was actually run.
-2. **A persistent Volume**, mounted on the API service (e.g. at `/data`) — Railway's
-   filesystem is otherwise wiped on every redeploy, which would force garmy to re-walk
-   your *entire* Garmin history from scratch each time (slow, and a real risk of
-   tripping Garmin's rate limiting/bot detection from a datacenter IP, worse than the
-   same risk already called out for local use).
-3. **`GARMY_DB_PATH` must point inside that volume** — e.g. `/data/garmin-health.db`,
-   not a relative path like the local-dev default. Set this alongside `GARMIN_EMAIL`/
-   `GARMIN_PASSWORD` as API service environment variables (same place as the Strava vars
-   above) — **double check this if you set the env vars before deciding the mount path**,
-   a mismatch here means garmy silently starts a fresh, empty database on next deploy.
-   The cached login session (see "Why a wrapper script" above) lives in a `garmy-tokens/`
-   directory next to this file automatically — no separate env var — so it's on the same
-   Volume and survives redeploys too, which is what actually keeps the rate-limiting risk
-   in point 2 from recurring on every sync rather than just the first one.
+**Setup:**
 
-Sync stays manual (click **Sync Garmin** on `/recovery`) unless you also set up a
-Railway Cron Job to hit `POST /api/garmin/sync` on a schedule — not required, just a
-reasonable follow-up since nobody's around in production to click a button.
+1. `python -m pip install garmy[localdb]` on the home machine (same as local dev).
+2. Copy `.env.home-sync.example` (repo root) to `.env.home-sync` and fill in:
+   - `GARMIN_EMAIL` / `GARMIN_PASSWORD`
+   - `DATABASE_URL` — Railway's Postgres service's **public** connection string (its
+     "Connect" tab, a `*.proxy.rlwy.net` hostname), not the internal
+     `postgres.railway.internal` one the deployed API service uses — that only resolves
+     inside Railway's own network.
+3. Run `scripts\home-garmin-sync.ps1` once manually to confirm it works (it runs
+   `apps/api/scripts/garmy_sync.py` to talk to Garmin, writing a local SQLite file, then
+   `node apps/api/dist/scripts/import-garmin-days.js` to read that file and upsert into
+   Postgres — `npm run build --workspace=apps/api` first if `dist/` doesn't exist yet).
+4. Point Windows Task Scheduler at it for a daily run: Action → `powershell.exe`,
+   Argument → `-ExecutionPolicy Bypass -File "<repo-root>\scripts\home-garmin-sync.ps1"`,
+   Trigger → Daily, at a time the machine is reliably on.
+
+The cached login session (see "Why a wrapper script" above) means only the very first
+run — or one after an extended gap — needs real credentials at all; every other run
+reuses or refreshes the cached token, now that refresh doesn't have to survive Railway's
+IP being blocked.
+
+The Railway-side `POST /api/garmin/sync` route and the **Sync Garmin** button on
+`/recovery` still exist but are a legacy manual fallback — they'll generally fail with
+the same `429` the home-sync setup exists to route around, since they still run from
+Railway's blocked IP.
 
 ### Web service
 

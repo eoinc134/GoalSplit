@@ -138,7 +138,7 @@ export async function initSchema(): Promise<void> {
       resting_heart_rate       INTEGER,
       max_heart_rate           INTEGER,
       min_heart_rate           INTEGER,
-      average_heart_rate       INTEGER,
+      average_heart_rate       DOUBLE PRECISION,
       avg_stress_level         INTEGER,
       max_stress_level         INTEGER,
       body_battery_high        INTEGER,
@@ -153,6 +153,14 @@ export async function initSchema(): Promise<void> {
       UNIQUE (user_id, day)
     )
   `;
+
+  // Migration: average_heart_rate was originally INTEGER, but garmy computes
+  // it as a mean across intraday readings (e.g. 58.9466...), which an
+  // INTEGER column rejects outright — caught by an end-to-end test against
+  // real data, not by any prior unit test (their fixtures all used
+  // whole-number fixtures). Widening is a no-op on a column already
+  // DOUBLE PRECISION.
+  await sql`ALTER TABLE garmin_days ALTER COLUMN average_heart_rate TYPE DOUBLE PRECISION`;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_garmin_days_user_day ON garmin_days (user_id, day DESC)
