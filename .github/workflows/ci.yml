@@ -21,17 +21,25 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      # --ignore-scripts: skip lifecycle scripts from npm dependencies. Safe
+      # here specifically because CI only type-checks/lints/tests — it never
+      # needs better-sqlite3's real native binary (Vitest mocks it), unlike
+      # apps/api/Dockerfile where the app actually runs and does need it.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
+      # node_modules/.bin, not `npx` — turbo is already an installed
+      # devDependency pinned by package-lock.json; `npx` would fall back to
+      # fetching an unpinned, unreviewed version on-demand if it were ever
+      # missing locally.
       - name: Build shared types
-        run: npx turbo build --filter=@goalsplit/types
+        run: node_modules/.bin/turbo build --filter=@goalsplit/types
 
       - name: Type-check
-        run: npx turbo type-check
+        run: node_modules/.bin/turbo type-check
 
       - name: Lint
-        run: npx turbo lint
+        run: node_modules/.bin/turbo lint
 
       - name: Test
-        run: npx turbo test
+        run: node_modules/.bin/turbo test

@@ -70,10 +70,19 @@ function runGarmySync(days: number, config: { email: string; password: string; d
     // the db file does.
     const tokenDir = path.join(path.dirname(config.dbPath), "garmy-tokens");
 
+    // Explicit minimal env, not `...process.env` — the previous version
+    // leaked every other secret (DATABASE_URL, STRAVA_CLIENT_SECRET, ...)
+    // into this child process for no reason. PATH is a fixed literal, not
+    // inherited from the parent process — confirmed via `docker run --rm
+    // node:22-slim sh -c 'echo $PATH'` to be these exact directories, all
+    // standard root-owned system paths (apt-get installs python3 into
+    // /usr/bin), not something that should ever vary at runtime.
+    const PYTHON_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
     const child = spawn(
       "python3",
       [SYNC_SCRIPT, "--db-path", config.dbPath, "--token-dir", tokenDir, "--last-days", String(days)],
-      { env: { ...process.env, GARMIN_EMAIL: config.email, GARMIN_PASSWORD: config.password } },
+      { env: { PATH: PYTHON_PATH, GARMIN_EMAIL: config.email, GARMIN_PASSWORD: config.password } },
     );
 
     // Stream the script's own output live into Railway's logs as it
