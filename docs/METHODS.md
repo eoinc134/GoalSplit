@@ -240,8 +240,10 @@ played a part. It's computed for runs of 20+ minutes.
 
 ## Long runs
 
-**Long run definition:** 90+ minutes, *or* the week's longest run if it's 60+ minutes,
-*or* any run the athlete tagged *Long Run* on Strava. For each one:
+**Long run definition:** 90+ minutes, *or* any run the athlete tagged *Long Run* on
+Strava, *or* the week's longest run if it's 60+ minutes and not a workout. The last
+condition stops a tempo run in a light week from skewing the durability figures. For
+each one:
 
 | Metric | Definition |
 |---|---|
@@ -260,11 +262,14 @@ aerobic durability currently runs out, which is the limiter for marathon-distanc
 Each run gets a class so the trends compare like with like. The athlete's own Strava
 tag always wins. Otherwise:
 
-1. **Long:** meets the long-run definition above.
-2. **Workout:** at least 15 % of HR time in Z4 or above.
-3. **Recovery:** average HR below Z2 and under 50 minutes.
-4. **Easy:** any other run with HR data.
-5. **Unknown:** no HR data.
+1. **Long:** 90+ minutes.
+2. **Workout:** at least 15 % of HR time in Z4 or above (intervals), *or* at least half
+   of it in Z3 or above (tempo and progression runs).
+3. **Long:** the week's longest run, if it's 60+ minutes and not a workout.
+4. **Recovery:** average HR below Z2 and under 50 minutes.
+5. **Easy:** any other run with HR data.
+6. **Unknown:** no HR data. Without HR, a workout can't be ruled out, so the week's
+   longest 60+ minute run still counts as long.
 
 Runs with at least 15 m of climbing per km are also flagged **hilly**.
 

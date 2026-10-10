@@ -82,6 +82,13 @@ describe("classifyRun", () => {
     expect(classifyRun({ ...base, movingTimeS: 65 * 60, metrics: null }).runClass).toBe("unknown");
   });
 
+  it("treats a mostly-Z3 run as a workout, even when it's the week's longest", () => {
+    const tempo = metricsFor({ seconds: 65 * 60, hr: 155 });
+    expect(classifyRun({ ...base, movingTimeS: 65 * 60, isWeekLongest: true, metrics: tempo }).runClass).toBe("workout");
+    const easy = metricsFor({ seconds: 65 * 60, hr: 140 });
+    expect(classifyRun({ ...base, movingTimeS: 65 * 60, isWeekLongest: true, metrics: easy }).runClass).toBe("long");
+  });
+
   it("infers workouts from time above Z4 and easy/recovery from average HR", () => {
     const intervals = metricsFor({ seconds: 2400, hr: (t) => (t % 600 < 150 ? 170 : 140) });
     expect(classifyRun({ ...base, movingTimeS: 2400, metrics: intervals }).runClass).toBe("workout");
@@ -152,10 +159,19 @@ describe("efficiency", () => {
 
 describe("long runs", () => {
   it("detects long runs by duration, week-longest, or Strava tag", () => {
-    expect(isLongRunActivity(run({ movingTimeS: 95 * 60 }))).toBe(true);
-    expect(isLongRunActivity(run({ movingTimeS: 70 * 60, isWeekLongest: true }))).toBe(true);
-    expect(isLongRunActivity(run({ movingTimeS: 50 * 60, workoutType: 2 }))).toBe(true);
-    expect(isLongRunActivity(run({ movingTimeS: 70 * 60 }))).toBe(false);
+    expect(isLongRunActivity(run({ movingTimeS: 95 * 60 }), ZONES)).toBe(true);
+    expect(isLongRunActivity(run({ movingTimeS: 70 * 60, isWeekLongest: true }), ZONES)).toBe(true);
+    expect(isLongRunActivity(run({ movingTimeS: 50 * 60, workoutType: 2 }), ZONES)).toBe(true);
+    expect(isLongRunActivity(run({ movingTimeS: 70 * 60 }), ZONES)).toBe(false);
+  });
+
+  it("doesn't count a tempo run as long just because it was the week's longest", () => {
+    const tempo = run({ isWeekLongest: true, stream: { seconds: 70 * 60, speedMs: 3.4, hr: 155 } }); // Z3
+    const easy = run({ isWeekLongest: true, stream: { seconds: 70 * 60, speedMs: 3, hr: 140 } }); // Z2
+    expect(isLongRunActivity(tempo, ZONES)).toBe(false);
+    expect(isLongRunActivity(easy, ZONES)).toBe(true);
+    // Duration alone still qualifies, whatever the effort.
+    expect(isLongRunActivity(run({ stream: { seconds: 100 * 60, hr: 155 } }), ZONES)).toBe(true);
   });
 
   it("analyses drift, fade and weekly share, and bins durability by duration", () => {

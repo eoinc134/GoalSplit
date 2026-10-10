@@ -13,7 +13,7 @@ questions:
 Every metric is defined, with its formula, assumptions and references, in
 **[docs/METHODS.md](docs/METHODS.md)**.
 
-![Training load: fitness (CTL), fatigue (ATL), form and ACWR over 90 days](docs/images/training-load.png)
+![Training load: fitness, fatigue and form over 90 days, daily TRIMP, weekly load and monotony](docs/images/training-load.png)
 
 ## What it measures
 
@@ -29,10 +29,10 @@ Every metric is defined, with its formula, assumptions and references, in
 
 ## Screenshots
 
-**Intensity distribution and aerobic efficiency:** weekly 3-zone split, time in HR zone,
-efficiency factor trend and pace at a fixed heart rate.
+**Volume, intensity and aerobic efficiency:** weekly volume and pace, 3-zone intensity
+split, time in HR zone, efficiency factor trend and pace at a fixed heart rate.
 
-![Weekly intensity distribution, time in HR zone, efficiency factor and pace at fixed HR](docs/images/intensity-efficiency.png)
+![Weekly volume and pace, intensity distribution, time in HR zone, efficiency factor and pace at fixed HR](docs/images/volume-intensity-efficiency.png)
 
 **Long runs and durability:** drift and fade by duration band, decoupling over time, and
 a per-run breakdown.

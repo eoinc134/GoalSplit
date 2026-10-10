@@ -2,11 +2,11 @@ import type { DurabilityBin, HrZoneBoundary, LongRunResult, LongRunSummary } fro
 import { averageHr, decoupling, gapPaceSecPerKm, overallSegment, quarterFade } from "./activity-metrics.js";
 import { toClassifiedRun, type AnalyticsActivity } from "./analytics-activity.js";
 import { weekStartOf } from "./dates.js";
-import { isLongRun } from "./run-classification.js";
+import { LONG_RUN_MIN_S } from "./run-classification.js";
 import { median } from "./stats.js";
 
 export const LONG_RUN_DEFINITION =
-  "Runs of 90+ minutes, the week's longest run if it's 60+ minutes, or any run you tagged Long Run on Strava.";
+  "Runs of 90+ minutes, any run you tagged Long Run on Strava, or the week's longest run if it's 60+ minutes and not a workout.";
 
 const DURABILITY_BINS: { label: string; minMinutes: number; maxMinutes: number | null }[] = [
   { label: "60–90 min", minMinutes: 60, maxMinutes: 90 },
@@ -17,8 +17,10 @@ const DURABILITY_BINS: { label: string; minMinutes: number; maxMinutes: number |
 
 const STRAVA_LONG_RUN = 2;
 
-export function isLongRunActivity(a: AnalyticsActivity): boolean {
-  return a.workoutType === STRAVA_LONG_RUN || isLongRun(a.movingTimeS, a.isWeekLongest);
+// Duration and the athlete's tag always count; the week's-longest rule goes
+// through classification so tempo/interval sessions are excluded.
+export function isLongRunActivity(a: AnalyticsActivity, zones: HrZoneBoundary[]): boolean {
+  return a.workoutType === STRAVA_LONG_RUN || a.movingTimeS >= LONG_RUN_MIN_S || toClassifiedRun(a, zones).runClass === "long";
 }
 
 export function buildDurabilityBins(runs: LongRunResult[]): DurabilityBin[] {
@@ -46,7 +48,7 @@ export function buildLongRunSummary(runs: AnalyticsActivity[], zones: HrZoneBoun
   }
 
   const results: LongRunResult[] = runs
-    .filter(isLongRunActivity)
+    .filter((a) => isLongRunActivity(a, zones))
     .map((a) => {
       const m = a.metrics;
       const seg = m ? overallSegment(m) : null;
