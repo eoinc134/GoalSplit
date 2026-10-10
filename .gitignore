@@ -53,3 +53,6 @@ railway_key.pub
 garmin-home-sync.db
 garmy-tokens-home/
 home-sync.log
+# python
+__pycache__/
+*.pyc

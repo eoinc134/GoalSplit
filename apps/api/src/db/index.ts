@@ -23,6 +23,10 @@ export async function initSchema(): Promise<void> {
     )
   `;
 
+  // Picks the Banister TRIMP sex coefficient; populated from the Strava athlete
+  // profile on (re)connect.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS sex TEXT`;
+
   // One token row per user (user_id is the PK — 1-to-1 relationship)
   await sql`
     CREATE TABLE IF NOT EXISTS strava_tokens (
@@ -94,6 +98,20 @@ export async function initSchema(): Promise<void> {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_activity_dumps_activity
       ON activity_dumps (activity_id, fetched_at DESC)
+  `;
+
+  // Derived, rebuildable summary of each activity's streams dump (HR
+  // histogram + quarter splits, grade-adjusted) — see lib/activity-metrics.ts.
+  // Lets every analytics endpoint skip re-reading multi-hundred-KB stream
+  // payloads. `metrics` is NULL when the streams were unusable, so the row
+  // still records that the activity was processed at this `version`.
+  await sql`
+    CREATE TABLE IF NOT EXISTS activity_metrics (
+      activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+      version     INTEGER NOT NULL,
+      metrics     JSONB,
+      computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `;
 
   // Manually-entered personal records: gaps Strava's best_efforts can't cover

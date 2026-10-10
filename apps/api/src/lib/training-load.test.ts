@@ -1,180 +1,166 @@
 import { describe, it, expect } from "vitest";
+import type { AthletePhysiology } from "@goalsplit/types";
 import {
-  buildLoadSpine,
-  summarizeWindow,
-  computeAcwr,
-  classifyBand,
+  buildDailySeries,
   buildTrainingLoadSummary,
-  type ActivityLoadInput,
-  type ListPayloadByActivityId,
+  buildWeekly,
+  classifyBand,
+  monotony,
+  strain,
+  type LoadInput,
 } from "./training-load";
+import { addDaysUtc } from "./dates";
 
-const TODAY = "2026-09-08";
+const TODAY = "2026-09-09"; // a Wednesday
 
-describe("buildLoadSpine", () => {
-  it("returns 28 rows ending on todayLocal, oldest first", () => {
-    const spine = buildLoadSpine([], {}, TODAY);
-    expect(spine).toHaveLength(28);
-    expect(spine[0].date).toBe("2026-08-12");
-    expect(spine[27].date).toBe(TODAY);
+const PHYSIOLOGY: AthletePhysiology = {
+  hrMax: 190,
+  hrRest: 50,
+  hrRestSource: "garmin",
+  sex: null,
+  trimpCoefficient: 1.92,
+  zoneModel: "karvonen",
+  zones: [],
+};
+
+function everyDay(from: string, days: number, load: number): LoadInput[] {
+  return Array.from({ length: days }, (_, i) => ({ localDate: addDaysUtc(from, i), load, source: "stream" as const }));
+}
+
+describe("buildDailySeries", () => {
+  it("emits one row per day including rest days", () => {
+    const series = buildDailySeries([{ localDate: "2026-09-02", load: 80, source: "stream" }], "2026-09-01", "2026-09-05");
+    expect(series.map((d) => d.date)).toEqual(["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"]);
+    expect(series.map((d) => d.load)).toEqual([0, 80, 0, 0, 0]);
   });
 
-  it("fills rest days with zero load instead of dropping them", () => {
-    const spine = buildLoadSpine([], {}, TODAY);
-    expect(spine.every((d) => d.load === 0 && d.activityCount === 0 && d.scoredCount === 0)).toBe(true);
+  it("converges ATL and CTL to a constant daily load", () => {
+    const series = buildDailySeries(everyDay("2026-01-01", 400, 50), "2026-01-01", addDaysUtc("2026-01-01", 399));
+    const last = series[series.length - 1];
+    expect(last.atl).toBeCloseTo(50, 3);
+    expect(last.ctl).toBeCloseTo(50, 1);
+    expect(last.tsb).toBeCloseTo(0, 0);
+    expect(last.acwr).toBeCloseTo(1, 2);
   });
 
-  it("sums suffer_score into the matching date and counts scored vs unscored activities", () => {
-    const activities: ActivityLoadInput[] = [
-      { id: "a1", localDate: TODAY },
-      { id: "a2", localDate: TODAY },
-      { id: "a3", localDate: TODAY },
-    ];
-    const payloads: ListPayloadByActivityId = {
-      a1: { suffer_score: 50 },
-      a2: { suffer_score: 30 },
-      a3: {}, // no suffer_score key at all — activity still counts, load doesn't
-    };
-    const spine = buildLoadSpine(activities, payloads, TODAY);
-    const today = spine[27];
-    expect(today.load).toBe(80);
-    expect(today.activityCount).toBe(3);
-    expect(today.scoredCount).toBe(2);
+  it("drops ATL faster than CTL after training stops, so form turns positive", () => {
+    const series = buildDailySeries(everyDay("2026-01-01", 120, 60), "2026-01-01", addDaysUtc("2026-01-01", 134));
+    const last = series[series.length - 1];
+    expect(last.atl).toBeLessThan(last.ctl);
+    expect(last.tsb).toBeGreaterThan(0);
   });
 
-  it("treats a genuine suffer_score of 0 as scored, not missing", () => {
-    const activities: ActivityLoadInput[] = [{ id: "a1", localDate: TODAY }];
-    const spine = buildLoadSpine(activities, { a1: { suffer_score: 0 } }, TODAY);
-    const today = spine[27];
-    expect(today.load).toBe(0);
-    expect(today.activityCount).toBe(1);
-    expect(today.scoredCount).toBe(1);
+  it("uses yesterday's CTL − ATL as today's form", () => {
+    const series = buildDailySeries([{ localDate: "2026-09-01", load: 100, source: "stream" }], "2026-09-01", "2026-09-02");
+    expect(series[0].tsb).toBe(0);
+    expect(series[1].tsb).toBeCloseTo(series[0].ctl - series[0].atl);
   });
-});
 
-describe("summarizeWindow", () => {
-  it("sums the trailing N days of the spine", () => {
-    const spine = buildLoadSpine(
+  it("counts scored vs unscored activities", () => {
+    const series = buildDailySeries(
       [
-        { id: "a1", localDate: TODAY },
-        { id: "a2", localDate: "2026-08-30" }, // 9 days back — inside chronic, outside acute
+        { localDate: "2026-09-01", load: 50, source: "stream" },
+        { localDate: "2026-09-01", load: 30, source: "average-hr" },
+        { localDate: "2026-09-01", load: 0, source: "none" },
       ],
-      { a1: { suffer_score: 20 }, a2: { suffer_score: 40 } },
-      TODAY,
+      "2026-09-01",
+      "2026-09-01",
     );
-
-    const acute = summarizeWindow(spine, 7);
-    const chronic = summarizeWindow(spine, 28);
-
-    expect(acute.totalLoad).toBe(20);
-    expect(chronic.totalLoad).toBe(60);
-    expect(chronic.avgLoad).toBe(60 / 28);
+    expect(series[0]).toMatchObject({ load: 80, activityCount: 3, scoredCount: 2 });
   });
 
-  it("returns a null coveragePct when there are no activities in the window", () => {
-    const spine = buildLoadSpine([], {}, TODAY);
-    expect(summarizeWindow(spine, 7).coveragePct).toBeNull();
-  });
-
-  it("computes coveragePct as a percentage of scored activities", () => {
-    const activities: ActivityLoadInput[] = [
-      { id: "a1", localDate: TODAY },
-      { id: "a2", localDate: TODAY },
-    ];
-    const spine = buildLoadSpine(activities, { a1: { suffer_score: 10 } }, TODAY);
-    expect(summarizeWindow(spine, 7).coveragePct).toBe(50);
-  });
-});
-
-describe("computeAcwr", () => {
-  it("returns null when chronic average load is 0", () => {
-    const zero = { days: 28, totalLoad: 0, avgLoad: 0, activityCount: 0, scoredCount: 0, coveragePct: null };
-    expect(computeAcwr(zero, zero)).toBeNull();
-  });
-
-  it("divides acute avg by chronic avg", () => {
-    const acute = { days: 7, totalLoad: 70, avgLoad: 10, activityCount: 1, scoredCount: 1, coveragePct: 100 };
-    const chronic = { days: 28, totalLoad: 140, avgLoad: 5, activityCount: 2, scoredCount: 2, coveragePct: 100 };
-    expect(computeAcwr(acute, chronic)).toBe(2);
+  it("leaves ACWR null until any load has been recorded", () => {
+    expect(buildDailySeries([], "2026-09-01", "2026-09-03").every((d) => d.acwr === null)).toBe(true);
   });
 });
 
 describe("classifyBand", () => {
-  it("returns null for a null acwr", () => expect(classifyBand(null)).toBeNull());
-  it("classifies undertraining below 0.8", () => expect(classifyBand(0.79)).toBe("undertraining"));
-  it("classifies the sweet spot from 0.8 to 1.3 inclusive", () => {
-    expect(classifyBand(0.8)).toBe("sweet-spot");
+  it("maps ratios to the Gabbett bands", () => {
+    expect(classifyBand(null)).toBeNull();
+    expect(classifyBand(0.79)).toBe("undertraining");
+    expect(classifyBand(1.0)).toBe("sweet-spot");
     expect(classifyBand(1.3)).toBe("sweet-spot");
+    expect(classifyBand(1.4)).toBe("caution");
+    expect(classifyBand(1.6)).toBe("high-risk");
   });
-  it("classifies caution above 1.3 up to 1.5 inclusive", () => {
-    expect(classifyBand(1.31)).toBe("caution");
-    expect(classifyBand(1.5)).toBe("caution");
+});
+
+describe("monotony and strain (Foster)", () => {
+  it("is mean ÷ SD of daily loads", () => {
+    const loads = [100, 0, 100, 0, 100, 0, 100];
+    const mean = 400 / 7;
+    const sd = Math.sqrt(loads.reduce((s, v) => s + (v - mean) ** 2, 0) / 7);
+    expect(monotony(loads)).toBeCloseTo(mean / sd, 6);
+    expect(strain(loads)).toBeCloseTo(400 * (mean / sd), 6);
   });
-  it("classifies high-risk above 1.5", () => expect(classifyBand(1.51)).toBe("high-risk"));
+
+  it("is higher for the same weekly load spread evenly than with rest days", () => {
+    expect(monotony([60, 60, 50, 60, 60, 50, 60])!).toBeGreaterThan(monotony([120, 0, 100, 0, 120, 0, 80])!);
+  });
+
+  it("is null when every day is identical", () => {
+    expect(monotony([0, 0, 0, 0, 0, 0, 0])).toBeNull();
+    expect(strain([50, 50, 50])).toBeNull();
+  });
+});
+
+describe("buildWeekly", () => {
+  it("returns 12 Monday-aligned weeks, flagging the current one as partial", () => {
+    const daily = buildDailySeries(everyDay("2026-06-01", 101, 40), "2026-06-01", TODAY);
+    const weekly = buildWeekly(daily, TODAY);
+    expect(weekly).toHaveLength(12);
+    expect(weekly[11]).toMatchObject({ weekStart: "2026-09-07", isPartialWeek: true, load: 120 });
+    expect(weekly[10]).toMatchObject({ weekStart: "2026-08-31", isPartialWeek: false, load: 280 });
+  });
 });
 
 describe("buildTrainingLoadSummary", () => {
-  it("handles a brand new connection with no activities at all", () => {
+  it("returns the display window but computes from the first activity", () => {
+    const inputs = everyDay("2026-01-01", 252, 50);
     const summary = buildTrainingLoadSummary({
-      activities: [],
-      listPayloadByActivityId: {},
+      inputs,
+      physiology: PHYSIOLOGY,
+      todayLocal: TODAY,
+      firstActivityLocalDate: "2026-01-01",
+      displayDays: 90,
+    });
+    expect(summary.daily).toHaveLength(90);
+    expect(summary.daily[89].date).toBe(TODAY);
+    // Long history means CTL has already warmed up inside the window.
+    expect(summary.daily[0].ctl).toBeGreaterThan(40);
+    expect(summary.insufficientHistory).toBe(false);
+    expect(summary.current.load7d).toBe(350);
+    expect(summary.coverage).toMatchObject({ activityCount: 7, streamScored: 7, coveragePct: 100 });
+  });
+
+  it("flags insufficient history under 42 days and handles no activities at all", () => {
+    const summary = buildTrainingLoadSummary({
+      inputs: [],
+      physiology: PHYSIOLOGY,
       todayLocal: TODAY,
       firstActivityLocalDate: null,
-    });
-    expect(summary.acwr).toBeNull();
-    expect(summary.band).toBeNull();
-    expect(summary.insufficientHistory).toBe(true);
-    expect(summary.lowCoverage).toBe(false); // no data isn't the same as low-coverage data
-  });
-
-  it("flags insufficientHistory when the account is younger than 28 days", () => {
-    const summary = buildTrainingLoadSummary({
-      activities: [{ id: "a1", localDate: TODAY }],
-      listPayloadByActivityId: { a1: { suffer_score: 50 } },
-      todayLocal: TODAY,
-      firstActivityLocalDate: "2026-09-01", // 7 days of history
-    });
-    expect(summary.insufficientHistory).toBe(true);
-  });
-
-  it("clears insufficientHistory once there are at least 28 days of history", () => {
-    const summary = buildTrainingLoadSummary({
-      activities: [{ id: "a1", localDate: TODAY }],
-      listPayloadByActivityId: { a1: { suffer_score: 50 } },
-      todayLocal: TODAY,
-      firstActivityLocalDate: "2026-08-12", // exactly 28 days of history
-    });
-    expect(summary.insufficientHistory).toBe(false);
-  });
-
-  it("flags lowCoverage when fewer than half of the acute window's activities have a suffer_score", () => {
-    const activities: ActivityLoadInput[] = [
-      { id: "a1", localDate: TODAY },
-      { id: "a2", localDate: TODAY },
-      { id: "a3", localDate: TODAY },
-    ];
-    const summary = buildTrainingLoadSummary({
-      activities,
-      listPayloadByActivityId: { a1: { suffer_score: 50 } }, // 1 of 3 scored
-      todayLocal: TODAY,
-      firstActivityLocalDate: "2026-08-01",
-    });
-    expect(summary.lowCoverage).toBe(true);
-  });
-
-  it("produces a complete summary with a sensible band for typical data", () => {
-    const activities: ActivityLoadInput[] = [
-      { id: "a1", localDate: TODAY },
-      { id: "a2", localDate: "2026-08-20" },
-    ];
-    const summary = buildTrainingLoadSummary({
-      activities,
-      listPayloadByActivityId: { a1: { suffer_score: 70 }, a2: { suffer_score: 70 } },
-      todayLocal: TODAY,
-      firstActivityLocalDate: "2026-08-01",
+      displayDays: 28,
     });
     expect(summary.daily).toHaveLength(28);
-    expect(summary.acwr).not.toBeNull();
-    expect(summary.band).not.toBeNull();
+    expect(summary.insufficientHistory).toBe(true);
+    expect(summary.current.acwr).toBeNull();
+    expect(summary.coverage.coveragePct).toBeNull();
+    expect(summary.lowCoverage).toBe(false);
+  });
+
+  it("flags low coverage when most recent activities have no HR", () => {
+    const summary = buildTrainingLoadSummary({
+      inputs: [
+        { localDate: TODAY, load: 0, source: "none" },
+        { localDate: TODAY, load: 0, source: "none" },
+        { localDate: TODAY, load: 40, source: "average-hr" },
+      ],
+      physiology: PHYSIOLOGY,
+      todayLocal: TODAY,
+      firstActivityLocalDate: "2026-01-01",
+      displayDays: 28,
+    });
+    expect(summary.coverage).toMatchObject({ averageScored: 1, unscored: 2, coveragePct: 33 });
+    expect(summary.lowCoverage).toBe(true);
   });
 });

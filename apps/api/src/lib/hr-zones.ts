@@ -1,4 +1,4 @@
-import type { HrZoneBoundary, HrZoneMinutes, DecouplingResult } from "@goalsplit/types";
+import type { HrZoneBoundary } from "@goalsplit/types";
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
@@ -34,9 +34,8 @@ export function buildZoneBoundaries(hrMax: number): HrZoneBoundary[] {
 
 // HRR (heart rate reserve) model — more individualized than %-of-max since it
 // accounts for resting HR, not just peak. Same ZONE_PCT bands, reinterpreted
-// as %HRR per the standard Karvonen convention, so zoneForHeartrate/
-// bucketTimeInZone need no changes — they just consume whichever boundaries
-// array the caller picks.
+// as %HRR per the standard Karvonen convention, so zoneForHeartrate needs no
+// changes — it just consumes whichever boundaries array the caller picks.
 export function buildZoneBoundariesKarvonen(hrMax: number, hrRest: number): HrZoneBoundary[] {
   const hrr = hrMax - hrRest;
   return ZONE_PCT.map((z, i) => ({
@@ -66,113 +65,5 @@ export function parseNumberArray(raw: unknown): number[] | null {
   return raw.every(isFiniteNumber) ? (raw as number[]) : null;
 }
 
-export interface TimeInZoneResult {
-  minutesByZone: HrZoneMinutes[];
-  totalMinutes: number;
-}
-
-// Buckets duration into HR zones: for each interval [i, i+1], the zone is
-// classified by the heartrate AT THE START of the interval (not an average of
-// both endpoints) — simple and defensible, documented simplification. Always
-// returns all 5 zones (0-filled if unused) so a chart never silently drops a
-// category.
-export function bucketTimeInZone(
-  timeSeconds: number[],
-  heartrateBpm: number[],
-  boundaries: HrZoneBoundary[],
-): TimeInZoneResult {
-  const secondsByZone: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  const n = Math.min(timeSeconds.length, heartrateBpm.length);
-
-  for (let i = 0; i < n - 1; i++) {
-    const duration = timeSeconds[i + 1] - timeSeconds[i];
-    if (!Number.isFinite(duration) || duration <= 0) continue; // non-monotonic/duplicate timestamps
-    const zone = zoneForHeartrate(heartrateBpm[i], boundaries);
-    secondsByZone[zone] += duration;
-  }
-
-  const minutesByZone: HrZoneMinutes[] = ZONE_PCT.map((z) => ({
-    zone: z.zone,
-    minutes: secondsByZone[z.zone] / 60,
-  }));
-  const totalMinutes = minutesByZone.reduce((sum, z) => sum + z.minutes, 0);
-
-  return { minutesByZone, totalMinutes };
-}
-
 // Below this, a first-half-vs-second-half split is too noisy to mean anything.
 export const MIN_DECOUPLING_MOVING_TIME_S = 20 * 60;
-
-export function isEligibleForDecoupling(type: string, movingTimeS: number): boolean {
-  return type === "Run" && movingTimeS >= MIN_DECOUPLING_MOVING_TIME_S;
-}
-
-export interface DecouplingInput {
-  activityId: string;
-  activityName: string;
-  localDate: string;
-  movingTimeS: number;
-  summaryDistanceM: number; // flattened activities.distance — fallback source
-  timeSeconds: number[];
-  heartrateBpm: number[];
-  distanceMeters: number[] | null; // null = streams dump had no `distance` key at all
-}
-
-const MIN_DECOUPLING_SAMPLES = 10;
-
-function mean(values: number[]): number {
-  return values.reduce((sum, v) => sum + v, 0) / values.length;
-}
-
-// Splits by time into two halves, computes an efficiency factor (speed/HR)
-// per half, and the % change from first to second. Positive decoupling means
-// HR drifted up (or pace fell) relative to the first half — expected fatigue;
-// very high values suggest the effort outpaced current aerobic fitness.
-export function computeAerobicDecoupling(input: DecouplingInput): DecouplingResult {
-  const base = {
-    activityId: input.activityId,
-    activityName: input.activityName,
-    localDate: input.localDate,
-    movingTimeS: input.movingTimeS,
-  };
-
-  const distanceMeters = input.distanceMeters;
-  const usedDistanceFallback = distanceMeters === null;
-  const n = Math.min(input.timeSeconds.length, input.heartrateBpm.length, (distanceMeters ?? input.timeSeconds).length);
-
-  if (n < MIN_DECOUPLING_SAMPLES) {
-    return { ...base, ef1: null, ef2: null, decouplingPct: null, usedDistanceFallback };
-  }
-
-  const time = input.timeSeconds.slice(0, n);
-  const hr = input.heartrateBpm.slice(0, n);
-  // Indoor runs (e.g. treadmill) can have a heartrate stream with no GPS-derived
-  // distance stream at all, even though the activity has a flattened summary
-  // distance. Rather than skip these steady-state efforts entirely, synthesize
-  // a constant-pace distance proxy prorated by elapsed time.
-  const totalDuration = time[n - 1] - time[0];
-  const distance =
-    distanceMeters !== null
-      ? distanceMeters.slice(0, n)
-      : time.map((t) => (totalDuration > 0 ? (input.summaryDistanceM * (t - time[0])) / totalDuration : 0));
-
-  const midTime = time[0] + totalDuration / 2;
-  let splitIndex = time.findIndex((t) => t >= midTime);
-  if (splitIndex < 1) splitIndex = Math.floor(n / 2);
-  if (splitIndex >= n - 1) splitIndex = n - 2;
-
-  function efficiencyFactor(from: number, to: number): number | null {
-    if (to <= from) return null;
-    const avgHr = mean(hr.slice(from, to + 1));
-    const dt = time[to] - time[from];
-    const dd = distance[to] - distance[from];
-    if (avgHr <= 0 || dt <= 0) return null;
-    return dd / dt / avgHr;
-  }
-
-  const ef1 = efficiencyFactor(0, splitIndex);
-  const ef2 = efficiencyFactor(splitIndex + 1, n - 1);
-  const decouplingPct = ef1 !== null && ef1 !== 0 && ef2 !== null ? ((ef1 - ef2) / ef1) * 100 : null;
-
-  return { ...base, ef1, ef2, decouplingPct, usedDistanceFallback };
-}

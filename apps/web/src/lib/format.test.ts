@@ -23,6 +23,10 @@ describe("formatPace", () => {
   it("formats pace with seconds", () => expect(formatPace(375)).toBe("6:15/km"));
   it("zero-pads single-digit seconds", () => expect(formatPace(61)).toBe("1:01/km"));
   it("formats 6 min/km", () => expect(formatPace(360)).toBe("6:00/km"));
+  it("rounds fractional seconds, carrying into the minute", () => {
+    expect(formatPace(312.345)).toBe("5:12/km");
+    expect(formatPace(359.7)).toBe("6:00/km");
+  });
 });
 
 describe("formatDate", () => {

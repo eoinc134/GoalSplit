@@ -18,8 +18,9 @@ export function toSeconds(input: string): number | null {
 }
 
 export function formatPace(secondsPerKm: number): string {
-  const m = Math.floor(secondsPerKm / 60);
-  const s = secondsPerKm % 60;
+  const whole = Math.round(secondsPerKm);
+  const m = Math.floor(whole / 60);
+  const s = whole % 60;
   return `${m}:${s.toString().padStart(2, "0")}/km`;
 }
 

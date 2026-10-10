@@ -22,6 +22,7 @@ export interface StravaAthleteResponse {
   profile: string;
   city?: string;
   country?: string;
+  sex?: "M" | "F" | null;
 }
 
 export interface StravaActivityResponse {

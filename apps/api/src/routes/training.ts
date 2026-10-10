@@ -1,93 +1,83 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
+import { buildTrainingLoadSummary, type LoadInput } from "../lib/training-load.js";
+import { activityLoad } from "../lib/trimp.js";
+import { MIN_DECOUPLING_MOVING_TIME_S } from "../lib/hr-zones.js";
+import { decoupling } from "../lib/activity-metrics.js";
+import { addZoneMinutes, emptyZoneMinutes, summarizeIntensity, zoneMinutesFromHistogram } from "../lib/intensity.js";
+import { buildEfficiencySummary } from "../lib/efficiency.js";
+import { buildLongRunSummary } from "../lib/long-runs.js";
+import { weekSpine } from "../lib/analytics-activity.js";
+import { addDaysUtc, weekStartOf } from "../lib/dates.js";
 import {
-  buildTrainingLoadSummary,
-  type ActivityLoadInput,
-  type ListPayloadByActivityId,
-} from "../lib/training-load.js";
-import {
-  estimateHrMax,
-  buildZoneBoundaries,
-  buildZoneBoundariesKarvonen,
-  bucketTimeInZone,
-  parseNumberArray,
-  computeAerobicDecoupling,
-  MIN_DECOUPLING_MOVING_TIME_S,
-} from "../lib/hr-zones.js";
+  getCurrentUserId,
+  getPhysiology,
+  loadAnalyticsActivities,
+  physiologyFrom,
+  streamsCoveragePct,
+  type LoadedActivities,
+} from "../services/analytics-data.service.js";
 import type {
   WeeklyVolumePoint,
   WeeklyPacePoint,
+  HrZoneMinutes,
   HrZoneSummary,
   DecouplingResult,
   HrDriftSummary,
+  IntensitySummary,
+  WeeklyIntensityPoint,
 } from "@goalsplit/types";
 
-// HR-zone time and aerobic decoupling read the `streams` dump — populated only
-// once "Backfill History" has run against real activities, so both endpoints
-// below report a `streamsCount`/`coveragePct` and degrade to a zeroed response
-// rather than erroring when that hasn't happened yet. Grade-adjusted pace,
-// power curves, and real HR/power zones from Strava's /athlete/zones (which
-// would need a broader OAuth scope than this app currently requests) remain
-// deferred — not built here.
+// Everything here except /trends reads activity_metrics — a compact,
+// grade-adjusted summary of each activity's streams dump (see
+// lib/activity-metrics.ts), computed lazily the first time it's needed. Until
+// "Backfill History" has fetched streams, those endpoints report a coverage
+// figure and return empty series rather than erroring.
 export const trainingRouter = Router();
 
-trainingRouter.get("/load", async (_req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
-    const today = new Date().toISOString().slice(0, 10);
-    return res.json({
-      data: buildTrainingLoadSummary({
-        activities: [],
-        listPayloadByActivityId: {},
-        todayLocal: today,
-        firstActivityLocalDate: null,
-      }),
-    });
-  }
+function intParam(raw: unknown, fallback: number, min: number, max: number): number {
+  return Math.min(Math.max(parseInt(String(raw ?? fallback)) || fallback, min), max);
+}
 
-  const [bounds] = await sql<{ today: string; first_date: string | null }[]>`
-    SELECT CURRENT_DATE::text AS today,
-           MIN((start_date_local AT TIME ZONE 'UTC')::date)::text AS first_date
-    FROM activities
-    WHERE user_id = ${user.id}
-  `;
+const NO_PHYSIOLOGY = physiologyFrom({ activityMaxHr: null, garminMaxHr: null, restingMedian: null, sex: null });
 
-  // start_date_local is a local wall-clock reading stored with a UTC label (Strava
-  // convention) — AT TIME ZONE 'UTC' reads it back losslessly regardless of the
-  // server's configured timezone, matching training-export.ts's date handling.
-  const activityRows = await sql<{ id: string; local_date: string }[]>`
-    SELECT id, (start_date_local AT TIME ZONE 'UTC')::date::text AS local_date
-    FROM activities
-    WHERE user_id = ${user.id}
-      AND (start_date_local AT TIME ZONE 'UTC')::date >= CURRENT_DATE - INTERVAL '27 days'
-    ORDER BY start_date_local
-  `;
+function emptyLoaded(): LoadedActivities {
+  return { today: new Date().toISOString().slice(0, 10), firstActivityDate: null, activities: [], metricsPending: 0 };
+}
 
-  const activities: ActivityLoadInput[] = activityRows.map((r) => ({ id: r.id, localDate: r.local_date }));
+async function loadForUser(days?: number, runsOnly = false) {
+  const userId = await getCurrentUserId();
+  if (!userId) return { physiology: NO_PHYSIOLOGY, loaded: emptyLoaded() };
+  const [physiology, loaded] = await Promise.all([
+    getPhysiology(userId),
+    loadAnalyticsActivities(userId, { days, runsOnly }),
+  ]);
+  return { physiology, loaded };
+}
 
-  // Latest 'list' dump per activity — same scoped-by-id lookup pattern as
-  // activities.ts's fetchDumpsForActivities, so this never scans the
-  // append-only, ever-growing activity_dumps table broadly.
-  const dumpRows = activities.length
-    ? await sql<{ activity_id: string; payload: Record<string, unknown> }[]>`
-        SELECT DISTINCT ON (activity_id) activity_id, payload
-        FROM activity_dumps
-        WHERE activity_id = ANY(${activities.map((a) => a.id)}) AND source = 'list'
-        ORDER BY activity_id, fetched_at DESC
-      `
-    : [];
+trainingRouter.get("/load", async (req, res) => {
+  const days = intParam(req.query.days, 90, 28, 365);
+  // Full history, not just the display window — ATL/CTL are recursive and
+  // need everything before the window to start from the right values.
+  const { physiology, loaded } = await loadForUser();
 
-  const listPayloadByActivityId: ListPayloadByActivityId = {};
-  for (const row of dumpRows) listPayloadByActivityId[row.activity_id] = row.payload;
+  const inputs: LoadInput[] = loaded.activities.map((a) => ({
+    localDate: a.localDate,
+    ...activityLoad(
+      { histogram: a.metrics?.hrHistogram ?? null, averageHeartrate: a.averageHeartrate, movingTimeS: a.movingTimeS },
+      physiology,
+    ),
+  }));
 
-  const summary = buildTrainingLoadSummary({
-    activities,
-    listPayloadByActivityId,
-    todayLocal: bounds.today,
-    firstActivityLocalDate: bounds.first_date,
+  return res.json({
+    data: buildTrainingLoadSummary({
+      inputs,
+      physiology,
+      todayLocal: loaded.today,
+      firstActivityLocalDate: loaded.firstActivityDate,
+      displayDays: days,
+    }),
   });
-
-  return res.json({ data: summary });
 });
 
 trainingRouter.get("/trends", async (req, res) => {
@@ -154,187 +144,121 @@ trainingRouter.get("/trends", async (req, res) => {
 });
 
 trainingRouter.get("/hr-zones", async (req, res) => {
-  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "28")) || 28, 7), 180);
+  const days = intParam(req.query.days, 28, 7, 180);
+  const { physiology, loaded } = await loadForUser(days);
+  const { zones } = physiology;
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
-    return res.json({
-      data: {
-        windowDays: days,
-        hrMaxEstimate: null,
-        zones: [],
-        minutesByZone: [],
-        totalMinutes: 0,
-        activityCount: 0,
-        streamsCount: 0,
-        coveragePct: null,
-        zoneModel: "percent-max",
-        restingHeartRateEstimate: null,
-      } satisfies HrZoneSummary,
-    });
-  }
-
-  const hrRows = await sql<{ max_heartrate: number }[]>`
-    SELECT max_heartrate FROM activities WHERE user_id = ${user.id} AND max_heartrate IS NOT NULL
-  `;
-  // Garmin's continuous all-day monitoring can catch a spike a logged Strava
-  // activity never did, so it's merged into the same HRmax estimate rather
-  // than kept separate.
-  const garminHrRows = await sql<{ max_heart_rate: number }[]>`
-    SELECT max_heart_rate FROM garmin_days WHERE user_id = ${user.id} AND max_heart_rate IS NOT NULL
-  `;
-  const hrMaxEstimate = estimateHrMax([
-    ...hrRows.map((r) => r.max_heartrate),
-    ...garminHrRows.map((r) => r.max_heart_rate),
-  ]);
-
-  // The most recent known resting HR upgrades the zone model from %-of-max to
-  // Karvonen (HRR) — more individualized since it accounts for resting HR,
-  // not just peak. Falls back to %-of-max until Garmin has synced at least once.
-  const [latestResting] = await sql<{ resting_heart_rate: number }[]>`
-    SELECT resting_heart_rate FROM garmin_days
-    WHERE user_id = ${user.id} AND resting_heart_rate IS NOT NULL
-    ORDER BY day DESC LIMIT 1
-  `;
-  const restingHeartRateEstimate = latestResting?.resting_heart_rate ?? null;
-
-  const zoneModel: "karvonen" | "percent-max" = restingHeartRateEstimate !== null ? "karvonen" : "percent-max";
-  const zones =
-    hrMaxEstimate === null
-      ? []
-      : zoneModel === "karvonen"
-        ? buildZoneBoundariesKarvonen(hrMaxEstimate, restingHeartRateEstimate!)
-        : buildZoneBoundaries(hrMaxEstimate);
-
-  const activityRows = await sql<{ id: string }[]>`
-    SELECT id FROM activities
-    WHERE user_id = ${user.id}
-      AND (start_date_local AT TIME ZONE 'UTC')::date >= CURRENT_DATE - (${days - 1} || ' days')::INTERVAL
-  `;
-  const activityCount = activityRows.length;
-
-  // Projects only the two sub-keys needed, never the full streams payload
-  // (which also carries up to 9 other arrays) — same rationale as prs.ts's
-  // `payload -> 'best_efforts'` projection. Skipped entirely when there's no
-  // hrMaxEstimate — with no zone boundaries there's nothing to bucket into.
-  const streamRows = activityCount > 0 && zones.length > 0
-    ? await sql<{ heartrate_data: unknown; time_data: unknown }[]>`
-        SELECT DISTINCT ON (activity_id)
-          payload -> 'heartrate' -> 'data' AS heartrate_data,
-          payload -> 'time' -> 'data' AS time_data
-        FROM activity_dumps
-        WHERE activity_id = ANY(${activityRows.map((a) => a.id)}) AND source = 'streams'
-        ORDER BY activity_id, fetched_at DESC
-      `
-    : [];
-
+  let minutesByZone: HrZoneMinutes[] = zones.length > 0 ? emptyZoneMinutes() : [];
   let streamsCount = 0;
-  let minutesByZone = zones.length > 0 ? bucketTimeInZone([], [], zones).minutesByZone : [];
-  let totalMinutes = 0;
-
-  if (zones.length > 0) {
-    for (const row of streamRows) {
-      const heartrateBpm = parseNumberArray(row.heartrate_data);
-      const timeSeconds = parseNumberArray(row.time_data);
-      if (!heartrateBpm || !timeSeconds) continue;
-
-      streamsCount++;
-      const { minutesByZone: zoneMinutes } = bucketTimeInZone(timeSeconds, heartrateBpm, zones);
-      minutesByZone = minutesByZone.map((z, i) => ({ zone: z.zone, minutes: z.minutes + zoneMinutes[i].minutes }));
-      totalMinutes += zoneMinutes.reduce((sum, z) => sum + z.minutes, 0);
-    }
+  for (const a of loaded.activities) {
+    if (!a.metrics?.hasHr || zones.length === 0) continue;
+    streamsCount++;
+    minutesByZone = addZoneMinutes(minutesByZone, zoneMinutesFromHistogram(a.metrics.hrHistogram, zones));
   }
+  const activityCount = loaded.activities.length;
 
   const summary: HrZoneSummary = {
     windowDays: days,
-    hrMaxEstimate,
+    hrMaxEstimate: physiology.hrMax,
     zones,
     minutesByZone,
-    totalMinutes,
+    totalMinutes: minutesByZone.reduce((s, z) => s + z.minutes, 0),
     activityCount,
     streamsCount,
     coveragePct: activityCount > 0 ? Math.round((streamsCount / activityCount) * 100) : null,
-    zoneModel,
-    restingHeartRateEstimate,
+    zoneModel: physiology.zoneModel,
+    restingHeartRateEstimate: physiology.hrRestSource === "garmin" ? physiology.hrRest : null,
   };
-
   return res.json({ data: summary });
 });
 
 trainingRouter.get("/hr-drift", async (req, res) => {
-  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "90")) || 90, 7), 365);
-  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "30")) || 30, 1), 50);
+  const days = intParam(req.query.days, 90, 7, 365);
+  const limit = intParam(req.query.limit, 30, 1, 50);
+  const { loaded } = await loadForUser(days, true);
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
-    return res.json({
-      data: {
-        windowDays: days,
-        minMovingTimeS: MIN_DECOUPLING_MOVING_TIME_S,
-        qualifyingRunCount: 0,
-        streamsCount: 0,
-        coveragePct: null,
-        runs: [],
-      } satisfies HrDriftSummary,
-    });
-  }
+  const qualifying = loaded.activities
+    .filter((a) => a.movingTimeS >= MIN_DECOUPLING_MOVING_TIME_S)
+    .reverse()
+    .slice(0, limit);
 
-  const runRows = await sql<
-    { id: string; name: string; moving_time: number; distance: number; local_date: string }[]
-  >`
-    SELECT id, name, moving_time, distance, (start_date_local AT TIME ZONE 'UTC')::date::text AS local_date
-    FROM activities
-    WHERE user_id = ${user.id} AND type = 'Run' AND moving_time >= ${MIN_DECOUPLING_MOVING_TIME_S}
-      AND (start_date_local AT TIME ZONE 'UTC')::date >= CURRENT_DATE - (${days - 1} || ' days')::INTERVAL
-    ORDER BY start_date_local DESC
-    LIMIT ${limit}
-  `;
-  const qualifyingRunCount = runRows.length;
-
-  const streamRows = qualifyingRunCount > 0
-    ? await sql<{ activity_id: string; heartrate_data: unknown; time_data: unknown; distance_data: unknown }[]>`
-        SELECT DISTINCT ON (activity_id) activity_id,
-          payload -> 'heartrate' -> 'data' AS heartrate_data,
-          payload -> 'time' -> 'data' AS time_data,
-          payload -> 'distance' -> 'data' AS distance_data
-        FROM activity_dumps
-        WHERE activity_id = ANY(${runRows.map((r) => r.id)}) AND source = 'streams'
-        ORDER BY activity_id, fetched_at DESC
-      `
-    : [];
-  const streamsByActivity = new Map(streamRows.map((r) => [r.activity_id, r]));
-
-  let streamsCount = 0;
   const runs: DecouplingResult[] = [];
-  for (const run of runRows) {
-    const streams = streamsByActivity.get(run.id);
-    const heartrateBpm = streams ? parseNumberArray(streams.heartrate_data) : null;
-    const timeSeconds = streams ? parseNumberArray(streams.time_data) : null;
-    if (!heartrateBpm || !timeSeconds) continue;
-
-    streamsCount++;
-    runs.push(
-      computeAerobicDecoupling({
-        activityId: run.id,
-        activityName: run.name,
-        localDate: run.local_date,
-        movingTimeS: run.moving_time,
-        summaryDistanceM: run.distance,
-        timeSeconds,
-        heartrateBpm,
-        distanceMeters: streams ? parseNumberArray(streams.distance_data) : null,
-      }),
-    );
+  for (const a of qualifying) {
+    if (!a.metrics?.hasHr) continue;
+    const { ef1, ef2, pct } = decoupling(a.metrics);
+    runs.push({
+      activityId: a.id,
+      activityName: a.name,
+      localDate: a.localDate,
+      movingTimeS: a.movingTimeS,
+      ef1,
+      ef2,
+      decouplingPct: pct,
+      usedDistanceFallback: a.metrics.usedDistanceFallback,
+    });
   }
 
   const summary: HrDriftSummary = {
     windowDays: days,
     minMovingTimeS: MIN_DECOUPLING_MOVING_TIME_S,
-    qualifyingRunCount,
-    streamsCount,
-    coveragePct: qualifyingRunCount > 0 ? Math.round((streamsCount / qualifyingRunCount) * 100) : null,
+    qualifyingRunCount: qualifying.length,
+    streamsCount: runs.length,
+    coveragePct: qualifying.length > 0 ? Math.round((runs.length / qualifying.length) * 100) : null,
     runs,
   };
-
   return res.json({ data: summary });
+});
+
+trainingRouter.get("/intensity", async (req, res) => {
+  const weeks = intParam(req.query.weeks, 12, 4, 52);
+  // Over-fetch by up to 6 days, then trim to whole calendar weeks once the
+  // database's "today" is known.
+  const { physiology, loaded } = await loadForUser(weeks * 7 + 6);
+  const { zones } = physiology;
+  const currentWeek = weekStartOf(loaded.today);
+  const windowStart = addDaysUtc(currentWeek, -7 * (weeks - 1));
+  const inWindow = loaded.activities.filter((a) => a.localDate >= windowStart);
+
+  const byWeek = new Map<string, HrZoneMinutes[]>();
+  for (const a of inWindow) {
+    if (!a.metrics?.hasHr || zones.length === 0) continue;
+    const wk = weekStartOf(a.localDate);
+    byWeek.set(wk, addZoneMinutes(byWeek.get(wk) ?? emptyZoneMinutes(), zoneMinutesFromHistogram(a.metrics.hrHistogram, zones)));
+  }
+
+  const weekly: WeeklyIntensityPoint[] = weekSpine(windowStart, loaded.today).map((weekStart) => ({
+    weekStart,
+    ...summarizeIntensity(byWeek.get(weekStart) ?? emptyZoneMinutes()),
+    isPartialWeek: weekStart === currentWeek,
+  }));
+
+  const summary: IntensitySummary = {
+    weeks,
+    zoneModel: physiology.zoneModel,
+    weekly,
+    overall: summarizeIntensity([...byWeek.values()].reduce(addZoneMinutes, emptyZoneMinutes())),
+    streamsCoveragePct: streamsCoveragePct(inWindow),
+  };
+  return res.json({ data: summary });
+});
+
+trainingRouter.get("/efficiency", async (req, res) => {
+  const days = intParam(req.query.days, 180, 28, 730);
+  const { physiology, loaded } = await loadForUser(days, true);
+
+  return res.json({
+    data: buildEfficiencySummary({
+      runs: loaded.activities,
+      zones: physiology.zones,
+      todayLocal: loaded.today,
+      windowDays: days,
+      streamsCoveragePct: streamsCoveragePct(loaded.activities),
+    }),
+  });
+});
+
+trainingRouter.get("/long-runs", async (req, res) => {
+  const days = intParam(req.query.days, 365, 28, 1095);
+  const { physiology, loaded } = await loadForUser(days, true);
+  return res.json({ data: buildLongRunSummary(loaded.activities, physiology.zones, days) });
 });

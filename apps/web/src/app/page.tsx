@@ -4,6 +4,7 @@ import { BandBadge } from "@/components/band-badge";
 import { StravaConnect } from "@/components/strava-connect";
 import { ActivityList } from "@/components/activity-list";
 import { serverFetch } from "@/lib/api";
+import { LOAD_FALLBACK } from "@/lib/analytics-fallbacks";
 import { formatTime, formatDate } from "@/lib/format";
 import type { TrainingLoadSummary, GarminDaysResponse, PersonalRecords, PrRecord } from "@goalsplit/types";
 
@@ -14,17 +15,6 @@ interface Stats {
 }
 
 const STATS_FALLBACK: Stats = { totalRuns: 0, totalDistance: 0, weeklyDistance: 0 };
-
-const LOAD_FALLBACK: TrainingLoadSummary = {
-  asOf: "",
-  daily: [],
-  acute: { days: 7, totalLoad: 0, avgLoad: 0, activityCount: 0, scoredCount: 0, coveragePct: null },
-  chronic: { days: 28, totalLoad: 0, avgLoad: 0, activityCount: 0, scoredCount: 0, coveragePct: null },
-  acwr: null,
-  band: null,
-  insufficientHistory: true,
-  lowCoverage: false,
-};
 
 const GARMIN_FALLBACK: GarminDaysResponse = { days: [] };
 const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
@@ -42,7 +32,7 @@ export default async function DashboardPage({ searchParams }: Readonly<Dashboard
   const [{ strava }, stats, load, garmin, prs] = await Promise.all([
     searchParams,
     serverFetch<Stats>("/dashboard/stats", STATS_FALLBACK),
-    serverFetch<TrainingLoadSummary>("/training/load", LOAD_FALLBACK),
+    serverFetch<TrainingLoadSummary>("/training/load?days=28", LOAD_FALLBACK),
     serverFetch<GarminDaysResponse>("/garmin/days?days=7", GARMIN_FALLBACK),
     serverFetch<PersonalRecords>("/prs", PRS_FALLBACK),
   ]);
@@ -82,9 +72,9 @@ export default async function DashboardPage({ searchParams }: Readonly<Dashboard
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <TeaserCard
             href="/training"
-            label="Training Load"
-            value={load.acwr !== null ? load.acwr.toFixed(2) : "—"}
-            subtext={load.band ? <BandBadge band={load.band} /> : "Keep syncing for a reading"}
+            label="Fitness (CTL)"
+            value={load.asOf ? load.current.ctl.toFixed(0) : "—"}
+            subtext={load.current.band ? <BandBadge band={load.current.band} /> : "Keep syncing for a reading"}
           />
           <TeaserCard
             href="/recovery"

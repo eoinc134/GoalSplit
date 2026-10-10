@@ -31,3 +31,6 @@ export const PR_DISTANCE_LADDER = [
   "30K",
   "Marathon",
 ];
+
+// Definitions and formulas for every metric on the Training page.
+export const METHODS_URL = "https://github.com/eoinc134/GoalSplit/blob/main/docs/METHODS.md";

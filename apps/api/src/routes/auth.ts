@@ -25,14 +25,16 @@ authRouter.get("/strava/callback", async (req, res) => {
 
     // Upsert user row
     await sql`
-      INSERT INTO users (id, strava_athlete_id, username, firstname, lastname, profile_url)
+      INSERT INTO users (id, strava_athlete_id, username, firstname, lastname, profile_url, sex)
       VALUES (${crypto.randomUUID()}, ${athlete.id}, ${athlete.username ?? null},
-              ${athlete.firstname}, ${athlete.lastname}, ${athlete.profile ?? null})
+              ${athlete.firstname}, ${athlete.lastname}, ${athlete.profile ?? null},
+              ${athlete.sex === "M" || athlete.sex === "F" ? athlete.sex : null})
       ON CONFLICT (strava_athlete_id) DO UPDATE SET
         username    = EXCLUDED.username,
         firstname   = EXCLUDED.firstname,
         lastname    = EXCLUDED.lastname,
-        profile_url = EXCLUDED.profile_url
+        profile_url = EXCLUDED.profile_url,
+        sex         = EXCLUDED.sex
     `;
 
     const [user] = await sql<{ id: string }[]>`
