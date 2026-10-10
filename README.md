@@ -13,6 +13,8 @@ questions:
 Every metric is defined, with its formula, assumptions and references, in
 **[docs/METHODS.md](docs/METHODS.md)**.
 
+![Training load: fitness (CTL), fatigue (ATL), form and ACWR over 90 days](docs/images/training-load.png)
+
 ## What it measures
 
 | Area | Metrics | Model |
@@ -24,6 +26,25 @@ Every metric is defined, with its formula, assumptions and references, in
 | Durability | Decoupling, pace fade and HR rise on long runs, binned by duration | Friel Pa:HR |
 | Recovery | Resting HR, HRV, sleep, Garmin training readiness | Garmin |
 | Records | Best efforts per distance, Strava-derived plus manual corrections | — |
+
+## Screenshots
+
+**Intensity distribution and aerobic efficiency:** weekly 3-zone split, time in HR zone,
+efficiency factor trend and pace at a fixed heart rate.
+
+![Weekly intensity distribution, time in HR zone, efficiency factor and pace at fixed HR](docs/images/intensity-efficiency.png)
+
+**Long runs and durability:** drift and fade by duration band, decoupling over time, and
+a per-run breakdown.
+
+![Durability by duration, aerobic decoupling chart and long-run table](docs/images/long-runs.png)
+
+**Dashboard and recovery:** headline stats, recent activities, and Garmin resting HR
+and sleep.
+
+| Dashboard | Recovery |
+|---|---|
+| ![Dashboard with totals, fitness, resting HR and latest PR](docs/images/dashboard.png) | ![Recovery page with resting heart rate and sleep duration](docs/images/recovery.png) |
 
 ## Key terms
 
