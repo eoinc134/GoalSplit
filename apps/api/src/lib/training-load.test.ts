@@ -133,6 +133,21 @@ describe("buildTrainingLoadSummary", () => {
     expect(summary.coverage).toMatchObject({ activityCount: 7, streamScored: 7, coveragePct: 100 });
   });
 
+  it("splits weekly load into phases, ignoring weeks before the first activity", () => {
+    // 10 weeks at 40/day, then 10 weeks at 90/day, ending last Sunday.
+    const start = "2026-04-20"; // a Monday, 20 weeks before 2026-09-07
+    const inputs = [...everyDay(start, 70, 40), ...everyDay(addDaysUtc(start, 70), 70, 90)];
+    const summary = buildTrainingLoadSummary({
+      inputs,
+      physiology: PHYSIOLOGY,
+      todayLocal: TODAY,
+      firstActivityLocalDate: start,
+      displayDays: 90,
+    });
+    expect(summary.phases.segments.map((s) => s.weeks)).toEqual([10, 10]);
+    expect(summary.phases.changes[0]).toMatchObject({ date: "2026-06-29", before: 280, after: 630 });
+  });
+
   it("flags insufficient history under 42 days and handles no activities at all", () => {
     const summary = buildTrainingLoadSummary({
       inputs: [],

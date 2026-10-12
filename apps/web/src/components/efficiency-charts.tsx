@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { EfficiencySummary, WeeklyPaceAtHrPoint } from "@goalsplit/types";
+import type { ChangePointResult, EfficiencySummary, WeeklyPaceAtHrPoint } from "@goalsplit/types";
 import { formatPace } from "@/lib/format";
 import { AXIS_COLOR, GRID_COLOR, SERIES, TOOLTIP_STYLE, TOOLTIP_TEXT, formatDayTick, legendLabel } from "./chart-theme";
 
@@ -43,6 +43,23 @@ function EfTooltip({ active, payload }: Readonly<{ active?: boolean; payload?: {
   );
 }
 
+const WEEK_MS = 7 * 86_400_000;
+
+// One flat run per detected phase, broken (null) between phases so the line
+// never implies a gradual transition the detector didn't find.
+function phaseSteps(result: ChangePointResult) {
+  return result.segments.flatMap((seg) => [
+    { ts: toTs(seg.start), ef: seg.mean, name: "Phase mean", temp: null },
+    { ts: toTs(seg.end) + WEEK_MS - 1, ef: seg.mean, name: "Phase mean", temp: null },
+    { ts: toTs(seg.end) + WEEK_MS, ef: null, name: "", temp: null },
+  ]);
+}
+
+// Each week's phase mean, for the weekly (categorical) pace chart.
+function phaseMeanFor(weekStart: string, result: ChangePointResult): number | null {
+  return result.segments.find((s) => weekStart >= s.start && weekStart <= s.end)?.mean ?? null;
+}
+
 // EF scatter for aerobic runs with a 28-day rolling median — the median line is
 // the trend to read; single runs scatter with terrain, weather and sleep.
 export function EfficiencyChart({ summary }: Readonly<{ summary: EfficiencySummary }>) {
@@ -56,6 +73,7 @@ export function EfficiencyChart({ summary }: Readonly<{ summary: EfficiencySumma
   const long = aerobic.filter((r) => r.runClass === "long").map(toPoint);
   const rolling = summary.rollingEf.map((p) => ({ ts: toTs(p.localDate), ef: p.ef, adjustedEf: p.adjustedEf, name: "28-day median", temp: null }));
   const hasAdjusted = summary.temperatureModel !== null && rolling.some((p) => p.adjustedEf !== null);
+  const steps = summary.efChangePoints.changes.length > 0 ? phaseSteps(summary.efChangePoints) : [];
 
   return (
     <div className="h-64 w-full">
@@ -86,6 +104,18 @@ export function EfficiencyChart({ summary }: Readonly<{ summary: EfficiencySumma
           <Scatter data={easy} name="Easy / recovery" fill={SERIES.easy} shape="circle" />
           <Scatter data={long} name="Long" fill={SERIES.long} shape="triangle" legendType="triangle" />
           <Line data={rolling} dataKey="ef" name="28-day median" stroke={SERIES.trend} strokeWidth={2} dot={false} />
+          {steps.length > 0 && (
+            <Line
+              data={steps}
+              dataKey="ef"
+              name="Phase mean"
+              stroke={SERIES.phase}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+              connectNulls={false}
+            />
+          )}
           {hasAdjusted && (
             <Line
               data={rolling}
@@ -103,16 +133,21 @@ export function EfficiencyChart({ summary }: Readonly<{ summary: EfficiencySumma
   );
 }
 
-export function PaceAtHrChart({ weekly }: Readonly<{ weekly: WeeklyPaceAtHrPoint[] }>) {
-  const data = weekly.filter((w) => w.gapPaceSecPerKm !== null);
-  if (data.length === 0) {
+export function PaceAtHrChart({
+  weekly,
+  changePoints,
+}: Readonly<{ weekly: WeeklyPaceAtHrPoint[]; changePoints: ChangePointResult }>) {
+  if (!weekly.some((w) => w.gapPaceSecPerKm !== null)) {
     return <p className="py-16 text-center text-sm text-neutral-500">Fewer than 10 minutes in the HR band in any week so far.</p>;
   }
+
+  const showPhases = changePoints.changes.length > 0;
+  const rows = weekly.map((w) => ({ ...w, phaseMean: showPhases ? phaseMeanFor(w.weekStart, changePoints) : null }));
 
   return (
     <div className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={weekly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <LineChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke={GRID_COLOR} vertical={false} />
           <XAxis dataKey="weekStart" tickFormatter={formatDayTick} tick={{ fill: AXIS_COLOR, fontSize: 11 }} stroke={GRID_COLOR} minTickGap={24} />
           {/* Reversed so faster (lower s/km) reads as "up". */}
@@ -129,12 +164,25 @@ export function PaceAtHrChart({ weekly }: Readonly<{ weekly: WeeklyPaceAtHrPoint
             labelStyle={TOOLTIP_TEXT}
             itemStyle={TOOLTIP_TEXT}
             labelFormatter={(label) => `Week of ${formatDayTick(String(label))}`}
-            formatter={(value, _name, item) => {
+            formatter={(value, name, item) => {
+              if (name === "Phase mean") return [formatPace(Number(value)), "Phase mean"];
               const minutes = Math.round((item.payload as WeeklyPaceAtHrPoint).seconds / 60);
               return [`${formatPace(Number(value))} (${minutes} min in band)`, "GAP pace"];
             }}
           />
+          {showPhases && <Legend itemSorter={null} wrapperStyle={{ fontSize: 12 }} formatter={legendLabel} />}
           <Line dataKey="gapPaceSecPerKm" name="GAP pace" stroke={SERIES.easy} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+          {showPhases && (
+            <Line
+              dataKey="phaseMean"
+              name="Phase mean"
+              type="stepAfter"
+              stroke={SERIES.phase}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>

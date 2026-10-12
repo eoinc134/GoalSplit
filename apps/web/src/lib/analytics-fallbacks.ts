@@ -1,5 +1,6 @@
 import type {
   AthletePhysiology,
+  ChangePointResult,
   EfficiencySummary,
   HrDriftSummary,
   HrZoneSummary,
@@ -20,6 +21,8 @@ const PHYSIOLOGY: AthletePhysiology = {
   zones: [],
 };
 
+const NO_CHANGE_POINTS: ChangePointResult = { segments: [], changes: [], noiseSd: null, minSegmentWeeks: 3 };
+
 export const LOAD_FALLBACK: TrainingLoadSummary = {
   asOf: "",
   physiology: PHYSIOLOGY,
@@ -27,6 +30,7 @@ export const LOAD_FALLBACK: TrainingLoadSummary = {
   weekly: [],
   current: { atl: 0, ctl: 0, tsb: 0, acwr: null, band: null, rampRate: 0, load7d: 0, monotony7d: null, strain7d: null },
   coverage: { activityCount: 0, streamScored: 0, averageScored: 0, unscored: 0, coveragePct: null },
+  phases: NO_CHANGE_POINTS,
   insufficientHistory: true,
   lowCoverage: false,
 };
@@ -77,6 +81,9 @@ export const EFFICIENCY_FALLBACK: EfficiencySummary = {
   runs: [],
   rollingEf: [],
   weeklyPaceAtHr: [],
+  weeklyEf: [],
+  efChangePoints: NO_CHANGE_POINTS,
+  paceChangePoints: NO_CHANGE_POINTS,
   temperatureModel: null,
   recentMedianEf: null,
   priorMedianEf: null,

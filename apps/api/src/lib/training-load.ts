@@ -7,6 +7,7 @@ import type {
   WeeklyLoadPoint,
 } from "@goalsplit/types";
 import { addDaysUtc, daysBetween, weekStartOf } from "./dates.js";
+import { detectChangePoints } from "./change-points.js";
 
 export interface LoadInput {
   localDate: string; // YYYY-MM-DD
@@ -31,6 +32,7 @@ const ACWR_CHRONIC_LAMBDA = 2 / (28 + 1);
 // zero it was seeded with.
 const WARMUP_DAYS = 42;
 const WEEKLY_HISTORY = 12;
+const PHASE_HISTORY_WEEKS = 52;
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
@@ -158,6 +160,15 @@ export function buildTrainingLoadSummary(input: BuildTrainingLoadSummaryInput): 
 
   const historyDays = first ? daysBetween(first, todayLocal) + 1 : 0;
 
+  // Training phases: level shifts in weekly load over the last year of
+  // complete weeks, skipping weeks before the first activity (their zeros
+  // would read as a phase of their own).
+  const firstWeek = first ? weekStartOf(first) : null;
+  const phaseWeeks = buildWeekly(full, todayLocal, PHASE_HISTORY_WEEKS + 1).filter(
+    (w) => !w.isPartialWeek && firstWeek !== null && w.weekStart >= firstWeek,
+  );
+  const phases = detectChangePoints(phaseWeeks.map((w) => ({ date: w.weekStart, value: w.load })));
+
   return {
     asOf: todayLocal,
     physiology: input.physiology,
@@ -181,6 +192,7 @@ export function buildTrainingLoadSummary(input: BuildTrainingLoadSummaryInput): 
       unscored: recentInputs.length - streamScored - averageScored,
       coveragePct,
     },
+    phases,
     insufficientHistory: historyDays < WARMUP_DAYS,
     // A null coveragePct means a rest week, not a data-quality problem.
     lowCoverage: (coveragePct ?? 100) < 50,

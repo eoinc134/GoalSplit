@@ -24,6 +24,7 @@ Every metric is defined, with its formula, assumptions and references, in
 | Intensity | Time in 5 HR zones; weekly low / moderate / high split; polarization index | Karvonen HR reserve; Seiler 3-zone; Treff (2019) |
 | Aerobic fitness | Efficiency factor trend; grade-adjusted pace inside Z2 | Friel EF; Minetti (2002) GAP |
 | Durability | Decoupling, pace fade and HR rise on long runs, binned by duration | Friel Pa:HR |
+| Change detection | Training phases from weekly load; sustained shifts in efficiency and Z2 pace | Penalised mean-shift segmentation (optimal partitioning / PELT) |
 | Recovery | Resting HR, HRV, sleep, Garmin training readiness | Garmin |
 | Records | Best efforts per distance, Strava-derived plus manual corrections | — |
 
@@ -63,6 +64,8 @@ and sleep.
 - **Efficiency factor (EF):** grade-adjusted speed per heartbeat. Rising EF on easy runs = improving aerobic fitness.
 - **Aerobic decoupling:** how much heart rate drifts up against pace from the first half of a run to the second.
 - **Durability:** how drift and pace fade grow as runs get longer.
+- **Change point:** the week a series shifts to a new level by more than its normal
+  week-to-week noise, such as the start of a training phase or a step in fitness.
 
 ## Accounting for confounders
 
@@ -89,16 +92,15 @@ syncing, see **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Future additions
 
-- **Training-block comparison:** define blocks (e.g. a marathon build), then compare
-  volume ramp, intensity distribution, long-run progression and efficiency change
-  between them. Which kind of block led to the best race?
-- **Recovery ↔ load modelling:** relate HRV, resting HR and sleep to form and the
-  previous days' load. For example, does a low-HRV morning predict worse efficiency or
-  more decoupling that day? Includes lagged correlations, and a home-built readiness
-  score checked against Garmin's.
+- **Training-block comparison:** compare blocks (e.g. a marathon build) on volume
+  ramp, intensity distribution, long-run progression and efficiency change. Which kind
+  of block led to the best race? The detected training phases are a natural starting
+  point for defining blocks.
+- **Recovery ↔ load modelling:** relate resting HR, sleep and stress (Garmin) to form
+  and the previous days' load. For example, does a raised resting HR the morning after
+  a big day predict worse efficiency or more decoupling? Includes lagged correlations
+  against a personal baseline. (HRV isn't available on the current watch.)
 - **Weather context:** historical temperature and humidity for each run's time and
   place, replacing the watch's skin-warmed temperature sensor in the heat adjustment.
 - **Race prediction:** critical speed and D′ fitted to best efforts across durations,
   tracked over time.
-- **Change-point detection:** flag statistically meaningful shifts in efficiency or load,
-  rather than relying on eyeballing the trend lines.

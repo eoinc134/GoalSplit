@@ -8,6 +8,7 @@ import { buildEfficiencySummary, fitTemperatureModel } from "./efficiency";
 import { buildLongRunSummary, isLongRunActivity } from "./long-runs";
 import { median, ols } from "./stats";
 import { addDaysUtc } from "./dates";
+import { noise } from "./__fixtures__/noise";
 import { syntheticStreams, type SyntheticStreamOptions } from "./__fixtures__/streams";
 
 // Karvonen 190/50: Z2 134–147, Z3 148–161, Z4 162–175, Z5 176+
@@ -154,6 +155,23 @@ describe("efficiency", () => {
     expect(summary.runs[1].bandPaceSecPerKm).toBeCloseTo(1000 / 3, 0);
     expect(summary.efChangePct).toBeCloseTo((3.0 / 2.8 - 1) * 100, 1);
     expect(summary.weeklyPaceAtHr.at(-1)!.isPartialWeek).toBe(true);
+    expect(summary.weeklyEf.filter((w) => w.ef !== null)).toHaveLength(2);
+    expect(summary.efChangePoints.changes).toEqual([]); // too few weeks to test
+  });
+
+  it("detects a step change in weekly efficiency", () => {
+    const runs = Array.from({ length: 20 }, (_, i) =>
+      run({
+        id: `r${i}`,
+        localDate: addDaysUtc(TODAY, -7 * (19 - i)),
+        stream: { seconds: 2400, speedMs: (i < 10 ? 2.8 : 3.1) + noise(i, 0.03), hr: 140 },
+      }),
+    );
+    const summary = buildEfficiencySummary({ runs, zones: ZONES, todayLocal: TODAY, windowDays: 180, streamsCoveragePct: 100 });
+    expect(summary.efChangePoints.changes).toHaveLength(1);
+    expect(summary.efChangePoints.changes[0].changePct).toBeGreaterThan(8);
+    // Same pace jump, seen at fixed HR: a negative s/km change = faster.
+    expect(summary.paceChangePoints.changes[0].changePct).toBeLessThan(-8);
   });
 });
 

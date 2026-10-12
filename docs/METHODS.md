@@ -13,6 +13,7 @@ end), applied to one athlete's Strava and Garmin data. Implementation lives in
 - [Intensity distribution](#intensity-distribution)
 - [Aerobic efficiency](#aerobic-efficiency)
 - [Long runs](#long-runs)
+- [Change-point detection](#change-point-detection)
 - [Run classification](#run-classification)
 - [Context and confounders](#context-and-confounders)
 - [Known limitations](#known-limitations)
@@ -257,6 +258,42 @@ each one:
 takes the median drift and fade in each bin. Rising medians across bins show where
 aerobic durability currently runs out, which is the limiter for marathon-distance racing.
 
+## Change-point detection
+
+Trend lines invite eyeballing. Change-point detection instead asks whether a series
+*shifted level* by more than its normal week-to-week noise, and if so, when. It runs on
+three weekly series:
+
+| Series | What a shift means |
+|---|---|
+| Weekly load (last 52 complete weeks) | A new **training phase**: build, peak, taper or a break |
+| Weekly median EF of aerobic runs | A step in aerobic fitness |
+| Weekly Z2 pace | A step in easy-effort speed (lower s/km = faster) |
+
+**Method:** exact penalised segmentation of the mean. It's optimal partitioning
+(Jackson et al., 2005), the exact search that PELT (Killick et al., 2012) speeds up by
+pruning. With at most ~52 weekly points the exhaustive search is instant, so no pruning
+is needed. The series is split into segments that minimise
+
+```
+Σ_segments Σ (z − segment mean)²  +  β × (number of segments)
+```
+
+- `z` is the series divided by a robust noise estimate: the median absolute deviation of
+  week-to-week differences, scaled to an SD and divided by √2. Using differences means
+  the level shifts being searched for barely inflate the noise estimate.
+- `β = 3·ln(n)` is a conservative, MBIC-style penalty. A shift has to clearly exceed the
+  noise to be reported.
+- Segments must be at least **3 weeks** long. That stops single weeks from becoming phases.
+- Before segmenting, each week is clipped to within 3 noise SDs of a centred 5-week
+  running median. One-off weeks (a race, an illness, ten minutes in the HR band) can't
+  drag a short segment's mean, while genuine shifts lasting 3+ weeks pass through.
+  Reported means come from the clipped series.
+
+Each change is reported as the first week of the new level, the means before and
+after, and the percentage change. Weeks with no data are skipped rather than treated as
+zero, except for load, where a zero week is real.
+
 ## Run classification
 
 Each run gets a class so the trends compare like with like. The athlete's own Strava
@@ -304,6 +341,10 @@ Runs with at least 15 m of climbing per km are also flagged **hilly**.
 - The fitness–fatigue time constants (7 and 42 days) are population conventions, not
   fitted to this athlete.
 - Treat ACWR bands and Foster's monotony threshold as descriptive, not predictive.
+- Change-point detection assumes weeks are independent around their segment mean. Weekly
+  load is autocorrelated (training builds gradually), which makes the difference-based
+  noise estimate run low, so gradual ramps can split into more phases than a coach
+  would draw.
 - Everything is one athlete's data: these are within-person trends, not generalisable findings.
 
 ## References
@@ -312,6 +353,8 @@ Runs with at least 15 m of climbing per km are also flagged **hilly**.
 - Foster, C. (1998). Monitoring training in athletes with reference to overtraining syndrome. *Medicine & Science in Sports & Exercise*, 30(7), 1164–1168.
 - Friel, J. *The Triathlete's Training Bible* / TrainingPeaks articles on efficiency factor and aerobic decoupling.
 - Gabbett, T. J. (2016). The training–injury prevention paradox. *British Journal of Sports Medicine*, 50(5), 273–280.
+- Jackson, B., et al. (2005). An algorithm for optimal partitioning of data on an interval. *IEEE Signal Processing Letters*, 12(2), 105–108.
+- Killick, R., Fearnhead, P., & Eckley, I. A. (2012). Optimal detection of changepoints with a linear computational cost. *Journal of the American Statistical Association*, 107(500), 1590–1598.
 - Impellizzeri, F. M., et al. (2020). Acute:chronic workload ratio: conceptual issues and fundamental pitfalls. *International Journal of Sports Physiology and Performance*, 15(6), 907–913.
 - Karvonen, M. J., Kentala, E., & Mustala, O. (1957). The effects of training on heart rate. *Annales Medicinae Experimentalis et Biologiae Fenniae*, 35(3), 307–315.
 - Minetti, A. E., et al. (2002). Energy cost of walking and running at extreme uphill and downhill slopes. *Journal of Applied Physiology*, 93(3), 1039–1046.

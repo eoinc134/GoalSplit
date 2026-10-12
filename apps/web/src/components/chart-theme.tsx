@@ -18,6 +18,7 @@ export const SERIES = {
   long: "#8b5cf6", // violet-500 — paired with a distinct marker shape (CVD ΔE 7.5 warn band)
   trend: "#d4d4d4", // neutral-300
   adjusted: "#d97706", // amber-600
+  phase: "#a3a3a3", // neutral-400, dashed — a fitted level, not a measured series
 } as const;
 
 // Low / moderate / high intensity (3-zone model). CVD warn band (ΔE 7.9), so

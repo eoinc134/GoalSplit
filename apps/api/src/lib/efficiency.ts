@@ -4,6 +4,7 @@ import { toClassifiedRun, weekSpine, type AnalyticsActivity } from "./analytics-
 import { addDaysUtc, daysBetween, weekStartOf } from "./dates.js";
 import { isAerobicClass } from "./run-classification.js";
 import { median, ols, standardDeviation } from "./stats.js";
+import { detectChangePoints } from "./change-points.js";
 
 export const MIN_EFFICIENCY_RUN_S = 20 * 60;
 const MIN_BAND_S = 10 * 60;
@@ -112,6 +113,19 @@ export function buildEfficiencySummary(input: BuildEfficiencyInput): EfficiencyS
     };
   });
 
+  // Weekly medians feed change-point detection: one value per week evens out
+  // irregular run spacing and damps single-run noise.
+  const weeklyEf = weekSpine(windowStart, todayLocal).map((weekStart) => {
+    const efs = aerobicRuns.filter((r) => weekStartOf(r.localDate) === weekStart).map((r) => r.ef!);
+    return { weekStart, ef: median(efs), runCount: efs.length };
+  });
+  const efChangePoints = detectChangePoints(
+    weeklyEf.filter((w) => w.ef !== null).map((w) => ({ date: w.weekStart, value: w.ef! })),
+  );
+  const paceChangePoints = detectChangePoints(
+    weeklyPaceAtHr.filter((w) => w.gapPaceSecPerKm !== null).map((w) => ({ date: w.weekStart, value: w.gapPaceSecPerKm! })),
+  );
+
   const recentFrom = addDaysUtc(todayLocal, -(ROLLING_DAYS - 1));
   const priorFrom = addDaysUtc(recentFrom, -ROLLING_DAYS);
   const recentMedianEf = median(aerobicRuns.filter((r) => r.localDate >= recentFrom).map((r) => r.ef!));
@@ -125,6 +139,9 @@ export function buildEfficiencySummary(input: BuildEfficiencyInput): EfficiencyS
     runs,
     rollingEf: [...rollingByDate.values()],
     weeklyPaceAtHr,
+    weeklyEf,
+    efChangePoints,
+    paceChangePoints,
     temperatureModel,
     recentMedianEf,
     priorMedianEf,

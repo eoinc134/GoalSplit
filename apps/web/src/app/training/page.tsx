@@ -8,9 +8,11 @@ import { IntensityChart } from "@/components/intensity-chart";
 import { PROFILE_LABEL } from "@/components/intensity-profile";
 import { EfficiencyChart, PaceAtHrChart } from "@/components/efficiency-charts";
 import { DurabilityTable, LongRunsTable } from "@/components/long-runs-table";
+import { ChangeList, PhasesTable } from "@/components/change-points";
 import { StreamsBackfillPrompt } from "@/components/streams-backfill-prompt";
 import { serverFetch } from "@/lib/api";
 import { METHODS_URL } from "@/lib/constants";
+import { formatPace } from "@/lib/format";
 import {
   EFFICIENCY_FALLBACK,
   HR_DRIFT_FALLBACK,
@@ -70,7 +72,7 @@ export default async function TrainingPage() {
     serverFetch<HrZoneSummary>("/training/hr-zones?days=28", HR_ZONES_FALLBACK),
     serverFetch<HrDriftSummary>("/training/hr-drift?days=90&limit=30", HR_DRIFT_FALLBACK),
     serverFetch<IntensitySummary>("/training/intensity?weeks=12", INTENSITY_FALLBACK),
-    serverFetch<EfficiencySummary>("/training/efficiency?days=180", EFFICIENCY_FALLBACK),
+    serverFetch<EfficiencySummary>("/training/efficiency?days=365", EFFICIENCY_FALLBACK),
     serverFetch<LongRunSummary>("/training/long-runs?days=365", LONG_RUNS_FALLBACK),
   ]);
   const { current, coverage } = load;
@@ -135,6 +137,13 @@ export default async function TrainingPage() {
             <MonotonyChart weekly={load.weekly} />
           </Card>
         </div>
+
+        <Card
+          title="Training phases (12 months)"
+          note="Stretches of weeks at a consistent load level, found by change-point detection on weekly TRIMP. A new phase starts where the level shifts by more than week-to-week noise."
+        >
+          <PhasesTable result={load.phases} />
+        </Card>
       </section>
 
       {/* ── Volume ───────────────────────────────────────────────────────── */}
@@ -205,14 +214,23 @@ export default async function TrainingPage() {
           <StreamsBackfillPrompt />
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card title="Efficiency factor (180 days)" note="Grade-adjusted speed (m/min) ÷ average HR, aerobic runs ≥20 min only.">
+            <Card
+              title="Efficiency factor (12 months)"
+              note="Grade-adjusted speed (m/min) ÷ average HR, aerobic runs ≥20 min only. Dashed steps: detected phases of weekly EF."
+            >
               <EfficiencyChart summary={efficiency} />
+              <div className="mt-3">
+                <ChangeList result={efficiency.efChangePoints} format={(v) => v.toFixed(3)} higherIsBetter />
+              </div>
             </Card>
             <Card
               title={efficiency.band ? `Pace at ${efficiency.band.minBpm}–${efficiency.band.maxBpm} bpm` : "Pace at fixed HR"}
-              note="Weekly grade-adjusted pace while HR sat in Z2, across all runs."
+              note="Weekly grade-adjusted pace while HR sat in Z2, across all runs. Dashed steps: detected phases."
             >
-              <PaceAtHrChart weekly={efficiency.weeklyPaceAtHr} />
+              <PaceAtHrChart weekly={efficiency.weeklyPaceAtHr} changePoints={efficiency.paceChangePoints} />
+              <div className="mt-3">
+                <ChangeList result={efficiency.paceChangePoints} format={formatPace} higherIsBetter={false} />
+              </div>
             </Card>
           </div>
         )}

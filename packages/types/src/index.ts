@@ -76,6 +76,30 @@ export interface AthletePhysiology {
   zones: HrZoneBoundary[]; // [] when hrMax is null
 }
 
+// ── Change-point detection ──────────────────────────────────────────────────
+// Shifts in the mean level of a weekly series (see lib/change-points.ts).
+
+export interface ChangePointSegment {
+  start: string; // first week (Monday) in the segment
+  end: string; // last week in the segment
+  weeks: number; // weeks with data
+  mean: number;
+}
+
+export interface ChangePoint {
+  date: string; // first week of the new level
+  before: number; // previous segment mean
+  after: number; // new segment mean
+  changePct: number;
+}
+
+export interface ChangePointResult {
+  segments: ChangePointSegment[]; // [] when the series is too short to test
+  changes: ChangePoint[];
+  noiseSd: number | null; // robust week-to-week noise estimate the penalty is scaled by
+  minSegmentWeeks: number;
+}
+
 export type LoadSource = "stream" | "average-hr" | "none";
 
 export interface DailyLoadPoint {
@@ -120,6 +144,7 @@ export interface TrainingLoadSummary {
     unscored: number;
     coveragePct: number | null; // scored ÷ total; null when there were no activities
   };
+  phases: ChangePointResult; // shifts in weekly load over the last 52 complete weeks
   insufficientHistory: boolean; // fewer than 42 days since first activity — CTL still warming up
   lowCoverage: boolean; // 7-day coveragePct < 50
 }
@@ -287,6 +312,9 @@ export interface EfficiencySummary {
   runs: EfficiencyRun[]; // oldest first
   rollingEf: { localDate: string; ef: number; adjustedEf: number | null }[]; // 28-day rolling median, aerobic runs only
   weeklyPaceAtHr: WeeklyPaceAtHrPoint[];
+  weeklyEf: { weekStart: string; ef: number | null; runCount: number }[]; // median EF of aerobic runs per week
+  efChangePoints: ChangePointResult;
+  paceChangePoints: ChangePointResult; // on weekly pace-at-HR (s/km — a negative change is faster)
   temperatureModel: TemperatureModel | null; // null below 15 runs or under 2 °C of spread
   recentMedianEf: number | null; // aerobic runs, last 28 days
   priorMedianEf: number | null; // aerobic runs, the 28 days before that
