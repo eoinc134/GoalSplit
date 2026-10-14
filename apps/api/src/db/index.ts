@@ -144,7 +144,7 @@ export async function initSchema(): Promise<void> {
 
   // All-day wellness metrics Strava structurally can't provide (it only sees
   // HR during a recorded activity) — synced from garmy's local SQLite mirror
-  // of Garmin Connect (see apps/api/src/services/garmin-sync.service.ts). This
+  // of Garmin Connect (see apps/api/src/services/garmin-import.service.ts). This
   // is a derived, re-buildable copy for this app's own queries, not a second
   // independent source of truth — garmy's own SQLite file plays the
   // "never re-fetch" cache role that activity_dumps plays for Strava.

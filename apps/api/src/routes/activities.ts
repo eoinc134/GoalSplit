@@ -8,6 +8,9 @@ import {
   type ActivityDumpPayloads,
 } from "../lib/training-export.js";
 import { buildActivityRoutes } from "../lib/polyline.js";
+import { getCurrentUserId } from "../services/user.service.js";
+import { ensureActivityMetrics } from "../services/metrics.service.js";
+import { analyseActivities } from "../services/analytics-data.service.js";
 
 export const activitiesRouter = Router();
 
@@ -36,19 +39,19 @@ activitiesRouter.get("/", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit ?? "50")), 200);
   const offset = parseInt(String(req.query.offset ?? "0"));
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) return res.json({ data: [], total: 0 });
+  const userId = await getCurrentUserId();
+  if (!userId) return res.json({ data: [], total: 0 });
 
   const activities = type
     ? await sql<ActivityRow[]>`
         SELECT * FROM activities
-        WHERE user_id = ${user.id} AND type = ${type}
+        WHERE user_id = ${userId} AND type = ${type}
         ORDER BY start_date DESC
         LIMIT ${limit} OFFSET ${offset}
       `
     : await sql<ActivityRow[]>`
         SELECT * FROM activities
-        WHERE user_id = ${user.id}
+        WHERE user_id = ${userId}
         ORDER BY start_date DESC
         LIMIT ${limit} OFFSET ${offset}
       `;
@@ -56,10 +59,10 @@ activitiesRouter.get("/", async (req, res) => {
   const [{ count }] = type
     ? await sql<{ count: number }[]>`
         SELECT COUNT(*)::INTEGER AS count FROM activities
-        WHERE user_id = ${user.id} AND type = ${type}
+        WHERE user_id = ${userId} AND type = ${type}
       `
     : await sql<{ count: number }[]>`
-        SELECT COUNT(*)::INTEGER AS count FROM activities WHERE user_id = ${user.id}
+        SELECT COUNT(*)::INTEGER AS count FROM activities WHERE user_id = ${userId}
       `;
 
   return res.json({ data: activities, total: count });
@@ -95,8 +98,8 @@ activitiesRouter.get("/export", async (req, res) => {
   const type = typeof req.query.type === "string" ? req.query.type : undefined;
   const format = req.query.format === "markdown" ? "markdown" : "json";
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     return format === "markdown"
       ? res.type("text/markdown").send(buildTrainingMarkdown([], days))
       : res.json({ data: { summary: buildTrainingSummary([], days), markdown: buildTrainingMarkdown([], days), activities: [] } });
@@ -105,19 +108,24 @@ activitiesRouter.get("/export", async (req, res) => {
   const activities = type
     ? await sql<ActivityRow[]>`
         SELECT * FROM activities
-        WHERE user_id = ${user.id} AND type = ${type}
+        WHERE user_id = ${userId} AND type = ${type}
           AND start_date >= NOW() - (${days} || ' days')::INTERVAL
         ORDER BY start_date DESC
       `
     : await sql<ActivityRow[]>`
         SELECT * FROM activities
-        WHERE user_id = ${user.id}
+        WHERE user_id = ${userId}
           AND start_date >= NOW() - (${days} || ' days')::INTERVAL
         ORDER BY start_date DESC
       `;
 
-  const dumps = await fetchDumpsForActivities(activities.map((a) => a.id));
-  const markdown = buildTrainingMarkdown(activities, days, dumps);
+  // One extra day so a run on the window's first local day isn't missed at
+  // the local-date vs UTC-timestamp boundary.
+  const [dumps, analysis] = await Promise.all([
+    fetchDumpsForActivities(activities.map((a) => a.id)),
+    analyseActivities(userId, days + 1),
+  ]);
+  const markdown = buildTrainingMarkdown(activities, days, dumps, analysis);
 
   if (format === "markdown") {
     res.setHeader("Content-Disposition", `attachment; filename="training-export-${days}d.md"`);
@@ -125,19 +133,23 @@ activitiesRouter.get("/export", async (req, res) => {
   }
 
   return res.json({
-    data: { summary: buildTrainingSummary(activities, days, dumps), markdown, activities },
+    data: { summary: buildTrainingSummary(activities, days, analysis), markdown, activities },
   });
 });
 
 activitiesRouter.post("/sync", async (req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     return res.status(401).json({ error: "Not connected to Strava", statusCode: 401 });
   }
 
   try {
     const full = req.query.full === "true";
-    const result = await syncActivities(user.id, { full });
+    const result = await syncActivities(userId, { full });
+    // Summarise any newly fetched streams now rather than on the next
+    // Training-page load. Not awaited — a long backfill can take a while, and
+    // the analytics endpoints still fill any gap lazily if this hasn't finished.
+    ensureActivityMetrics(userId).catch((err: unknown) => console.error("Metrics precompute failed:", err));
     return res.json({ data: result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Sync failed";
@@ -153,15 +165,15 @@ activitiesRouter.post("/sync", async (req, res) => {
 // last so this param route never shadows the literal /routes and /export paths
 // above it — Express matches GET routes in registration order.
 activitiesRouter.get("/:id", async (req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) return res.status(404).json({ error: "Not found", statusCode: 404 });
+  const userId = await getCurrentUserId();
+  if (!userId) return res.status(404).json({ error: "Not found", statusCode: 404 });
 
   const [activity] = await sql<ActivityRow[]>`
-    SELECT * FROM activities WHERE id = ${req.params.id} AND user_id = ${user.id}
+    SELECT * FROM activities WHERE id = ${req.params.id} AND user_id = ${userId}
   `;
   if (!activity) return res.status(404).json({ error: "Not found", statusCode: 404 });
 
-  const dumps = await fetchDumpsForActivities([activity.id]);
+  const [dumps, analysis] = await Promise.all([fetchDumpsForActivities([activity.id]), analyseActivities(userId)]);
   const activityDumps = dumps[activity.id];
 
   const routes = buildActivityRoutes([
@@ -178,7 +190,7 @@ activitiesRouter.get("/:id", async (req, res) => {
     data: {
       ...activity,
       route: routes[0]?.points ?? null,
-      notes: buildActivityNote(activity, activityDumps),
+      notes: buildActivityNote(activity, activityDumps, analysis[activity.id]),
     },
   });
 });

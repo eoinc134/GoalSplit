@@ -387,8 +387,8 @@ export interface ActivityRoute {
 
 // ── Garmin health data ───────────────────────────────────────────────────────
 // All-day wellness metrics Strava structurally can't provide (it only sees HR
-// during a recorded activity). Synced via garmy's local SQLite mirror — see
-// apps/api/src/services/garmin-sync.service.ts.
+// during a recorded activity). Synced from a home machine via garmy's local
+// SQLite mirror — see apps/api/src/services/garmin-import.service.ts.
 
 export interface GarminDayPoint {
   day: string; // YYYY-MM-DD
@@ -414,16 +414,4 @@ export interface GarminDaysResponse {
 
 export interface GarminSyncResult {
   synced: number;
-}
-
-// Garmin sync runs as a background job rather than inline on the HTTP request —
-// a cold login + multi-day backfill can run well past Railway's edge-proxy
-// timeout, which would otherwise kill the request before garmy finishes.
-export interface GarminSyncStatus {
-  state: "idle" | "running" | "done" | "error";
-  startedAt: string | null;
-  finishedAt: string | null;
-  days: number | null;
-  result: GarminSyncResult | null;
-  error: string | null;
 }

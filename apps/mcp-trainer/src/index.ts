@@ -15,8 +15,9 @@ server.registerTool(
     title: "Get recent training data",
     description:
       "Fetches the user's recent GoalSplit training log (runs and other activities synced from Strava), " +
-      "including per-activity distance, pace, heart rate, elevation, relative effort, splits, best efforts, " +
-      "and any notes — for use as coaching context.",
+      "including per-activity distance, pace, grade-adjusted pace, heart rate, elevation, run type " +
+      "(easy/long/workout/recovery/race), training load (Banister TRIMP), splits, best efforts, and any notes — " +
+      "for use as coaching context.",
     inputSchema: {
       days: z
         .number()

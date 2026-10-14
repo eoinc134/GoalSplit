@@ -10,8 +10,20 @@ vi.mock("../services/sync.service.js", () => ({
   syncActivities: vi.fn(),
 }));
 
+vi.mock("../services/metrics.service.js", () => ({
+  ensureActivityMetrics: vi.fn().mockResolvedValue({ computed: 0, pending: 0 }),
+}));
+
+vi.mock("../services/analytics-data.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/analytics-data.service.js")>()),
+  analyseActivities: vi.fn().mockResolvedValue({}),
+}));
+
 import { app } from "../app.js";
 import { sql } from "../db/index.js";
+import { syncActivities } from "../services/sync.service.js";
+import { ensureActivityMetrics } from "../services/metrics.service.js";
+import { analyseActivities } from "../services/analytics-data.service.js";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -102,10 +114,18 @@ describe("GET /api/activities/export", () => {
         },
       ]);
 
+    vi.mocked(analyseActivities).mockResolvedValueOnce({
+      "act-1": { trimp: 91.6, runClass: "race", gapPaceSecPerKm: 238.4 },
+    });
+
     const res = await request(app).get("/api/activities/export");
     expect(res.status).toBe(200);
-    expect(res.body.data.summary.totalEffort).toBe(87);
-    expect(res.body.data.markdown).toContain("race, effort 87, cadence 172spm");
+    // The app's own TRIMP, not Strava's suffer_score, even when both exist.
+    expect(res.body.data.summary.totalTrimp).toBe(92);
+    expect(res.body.data.summary.totalEffort).toBeUndefined();
+    expect(res.body.data.markdown).toContain("race, TRIMP 92, GAP 3:58/km, cadence 172spm");
+    expect(res.body.data.markdown).toContain("| race |");
+    expect(res.body.data.markdown).toContain("| 3:58/km |");
     expect(res.body.data.markdown).toContain('"Felt strong"');
     expect(res.body.data.markdown).toContain("Splits:");
     expect(res.body.data.markdown).toContain("Best effort: 5K in 19:58");
@@ -174,10 +194,43 @@ describe("GET /api/activities/:id", () => {
         { activity_id: "act-1", source: "detail", payload: { description: "Felt strong" } },
       ]); // dumps
 
+    vi.mocked(analyseActivities).mockResolvedValueOnce({
+      "act-1": { trimp: 87.2, runClass: "race", gapPaceSecPerKm: null },
+    });
+
     const res = await request(app).get("/api/activities/act-1");
 
     expect(res.status).toBe(200);
-    expect(res.body.data.notes).toContain("race, effort 87");
+    expect(res.body.data.notes).toContain("race, TRIMP 87");
     expect(res.body.data.notes).toContain('"Felt strong"');
+  });
+});
+
+describe("POST /api/activities/sync", () => {
+  it("returns 401 when no user exists", async () => {
+    mockSql.mockResolvedValueOnce([]); // users
+    const res = await request(app).post("/api/activities/sync");
+    expect(res.status).toBe(401);
+    expect(vi.mocked(syncActivities)).not.toHaveBeenCalled();
+  });
+
+  it("syncs, then precomputes stream metrics without waiting for them", async () => {
+    mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
+    vi.mocked(syncActivities).mockResolvedValueOnce({ synced: 3, pages: 1 });
+
+    const res = await request(app).post("/api/activities/sync?full=true");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ synced: 3, pages: 1 });
+    expect(vi.mocked(syncActivities)).toHaveBeenCalledWith("user-1", { full: true });
+    expect(vi.mocked(ensureActivityMetrics)).toHaveBeenCalledWith("user-1");
+  });
+
+  it("maps a Strava rate-limit error to 429", async () => {
+    mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
+    vi.mocked(syncActivities).mockRejectedValueOnce(new Error("RATE_LIMIT_EXCEEDED"));
+    const res = await request(app).post("/api/activities/sync");
+    expect(res.status).toBe(429);
+    expect(vi.mocked(ensureActivityMetrics)).not.toHaveBeenCalled();
   });
 });

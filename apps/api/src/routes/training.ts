@@ -10,7 +10,6 @@ import { buildLongRunSummary } from "../lib/long-runs.js";
 import { weekSpine } from "../lib/analytics-activity.js";
 import { addDaysUtc, weekStartOf } from "../lib/dates.js";
 import {
-  getCurrentUserId,
   getPhysiology,
   loadAnalyticsActivities,
   physiologyFrom,
@@ -27,6 +26,7 @@ import type {
   IntensitySummary,
   WeeklyIntensityPoint,
 } from "@goalsplit/types";
+import { getCurrentUserId } from "../services/user.service.js";
 
 // Everything here except /trends reads activity_metrics — a compact,
 // grade-adjusted summary of each activity's streams dump (see
@@ -83,8 +83,8 @@ trainingRouter.get("/load", async (req, res) => {
 trainingRouter.get("/trends", async (req, res) => {
   const weeks = Math.min(Math.max(parseInt(String(req.query.weeks ?? "12")) || 12, 1), 52);
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     return res.json({ data: { weeks, volumeByType: [], runPace: [] } });
   }
 
@@ -106,7 +106,7 @@ trainingRouter.get("/trends", async (req, res) => {
       SUM(distance)    AS distance_m,
       SUM(moving_time) AS moving_time_s
     FROM activities
-    WHERE user_id = ${user.id}
+    WHERE user_id = ${userId}
       AND (start_date_local AT TIME ZONE 'UTC')::date >= ${cutoffDateStr}::date
     GROUP BY week_start, type
     ORDER BY week_start, type
@@ -118,7 +118,7 @@ trainingRouter.get("/trends", async (req, res) => {
       SUM(distance)    AS distance_m,
       SUM(moving_time) AS moving_time_s
     FROM activities
-    WHERE user_id = ${user.id} AND type = 'Run'
+    WHERE user_id = ${userId} AND type = 'Run'
       AND (start_date_local AT TIME ZONE 'UTC')::date >= ${cutoffDateStr}::date
     GROUP BY week_start
     ORDER BY week_start

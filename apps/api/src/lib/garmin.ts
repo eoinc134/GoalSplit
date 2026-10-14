@@ -42,19 +42,3 @@ export function toGarminDayPoint(row: GarminDayRow): GarminDayPoint {
     totalSteps: row.total_steps,
   };
 }
-
-export interface GarminConfig {
-  email: string;
-  password: string;
-  dbPath: string;
-}
-
-// Pure read of process.env — lets the route/service fail fast with a clear
-// "not configured" message instead of a cryptic garmy-sync spawn error.
-export function validateGarminConfig(env: NodeJS.ProcessEnv = process.env): GarminConfig | null {
-  const email = env.GARMIN_EMAIL;
-  const password = env.GARMIN_PASSWORD;
-  const dbPath = env.GARMY_DB_PATH;
-  if (!email || !password || !dbPath) return null;
-  return { email, password, dbPath };
-}

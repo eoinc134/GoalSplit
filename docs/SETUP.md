@@ -15,7 +15,7 @@ Requires Node.js, Docker Desktop, and Python 3.8+ (Garmin sync only).
 ```sh
 npm install
 cp .env.example .env                  # Docker Compose variables
-cp apps/api/.env.example apps/api/.env # add Strava (and optionally Garmin) credentials
+cp apps/api/.env.example apps/api/.env # add Strava credentials (Garmin ones go in .env.home-sync)
 docker compose up -d                  # Postgres on port 5433; schema is created on API start
 npm run dev                           # web on :3000, API on :3001
 ```
@@ -101,5 +101,4 @@ Set the Strava app's callback domain to the API's Railway domain.
 | `GET` | `/api/activities/export?days=&type=&format=markdown\|json` | Training log for Claude |
 | `GET` / `POST` / `DELETE` | `/api/prs` | Personal records (Strava-derived + manual) |
 | `GET` | `/api/garmin/days?days=7–365` | Daily Garmin wellness data |
-| `POST` / `GET` | `/api/garmin/sync` · `/api/garmin/sync/status` | Legacy in-app Garmin sync (blocked from Railway; use home sync) |
 | `GET` | `/api/auth/strava` · `/api/auth/status` | Strava OAuth and connection status |

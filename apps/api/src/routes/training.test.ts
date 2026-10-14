@@ -10,20 +10,17 @@ vi.mock("../services/analytics-data.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/analytics-data.service.js")>();
   return {
     ...actual,
-    getCurrentUserId: vi.fn(),
     getPhysiology: vi.fn(),
     loadAnalyticsActivities: vi.fn(),
   };
 });
 
+vi.mock("../services/user.service.js", () => ({ getCurrentUserId: vi.fn() }));
+
 import { app } from "../app.js";
 import { sql } from "../db/index.js";
-import {
-  getCurrentUserId,
-  getPhysiology,
-  loadAnalyticsActivities,
-  physiologyFrom,
-} from "../services/analytics-data.service.js";
+import { getPhysiology, loadAnalyticsActivities, physiologyFrom } from "../services/analytics-data.service.js";
+import { getCurrentUserId } from "../services/user.service.js";
 import { computeActivityMetrics } from "../lib/activity-metrics.js";
 import type { AnalyticsActivity } from "../lib/analytics-activity.js";
 import { syntheticStreams } from "../lib/__fixtures__/streams.js";
@@ -94,15 +91,15 @@ describe("GET /api/training/load", () => {
 
 describe("GET /api/training/trends", () => {
   it("returns empty series when no user exists", async () => {
-    mockSql.mockResolvedValueOnce([]); // users
+    mockUserId.mockResolvedValue(null);
     const res = await request(app).get("/api/training/trends");
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ weeks: 12, volumeByType: [], runPace: [] });
   });
 
   it("returns weekly volume-by-type and run-pace series, flagging the current week", async () => {
+    mockUserId.mockResolvedValue("user-1");
     mockSql
-      .mockResolvedValueOnce([{ id: "user-1" }]) // users
       .mockResolvedValueOnce([{ week_start: "2026-09-07" }]) // current week start
       .mockResolvedValueOnce([
         { week_start: "2026-08-31", type: "Run", activity_count: 3, distance_m: 15000, moving_time_s: 5400 },
@@ -124,7 +121,7 @@ describe("GET /api/training/trends", () => {
   });
 
   it("clamps weeks to the 1-52 range", async () => {
-    mockSql.mockResolvedValueOnce([]); // users
+    mockUserId.mockResolvedValue(null);
     const res = await request(app).get("/api/training/trends?weeks=9999");
     expect(res.body.data.weeks).toBe(52);
   });

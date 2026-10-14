@@ -1,28 +1,29 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
+import { getCurrentUserId } from "../services/user.service.js";
 
 export const dashboardRouter = Router();
 
 dashboardRouter.get("/stats", async (_req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
+  const userId = await getCurrentUserId();
 
   let totalRuns = 0;
   let totalDistance = 0; // km
   let weeklyDistance = 0; // km
 
-  if (user) {
+  if (userId) {
     const [runStats] = await sql<{ count: number; total_distance: number }[]>`
       SELECT
         COUNT(*)::INTEGER          AS count,
         COALESCE(SUM(distance), 0) AS total_distance
       FROM activities
-      WHERE user_id = ${user.id} AND type = 'Run'
+      WHERE user_id = ${userId} AND type = 'Run'
     `;
 
     const [weekStats] = await sql<{ weekly_distance: number }[]>`
       SELECT COALESCE(SUM(distance), 0) AS weekly_distance
       FROM activities
-      WHERE user_id  = ${user.id}
+      WHERE user_id  = ${userId}
         AND type     = 'Run'
         AND start_date >= date_trunc('week', NOW())
     `;

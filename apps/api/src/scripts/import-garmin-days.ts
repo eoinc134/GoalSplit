@@ -16,7 +16,8 @@
 //   DATABASE_URL=postgresql://... node dist/scripts/import-garmin-days.js --db-path <path>
 
 import { sql, initSchema } from "../db/index.js";
-import { importGarminDaysFromSqlite } from "../services/garmin-sync.service.js";
+import { importGarminDaysFromSqlite } from "../services/garmin-import.service.js";
+import { getCurrentUserId } from "../services/user.service.js";
 
 async function main(): Promise<number> {
   const dbPathArgIndex = process.argv.indexOf("--db-path");
@@ -33,13 +34,13 @@ async function main(): Promise<number> {
   await initSchema();
 
   // Same single-user-anchor convention as every other route in this app.
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     console.error("Error: no user found — sync Strava at least once first");
     return 1;
   }
 
-  const result = await importGarminDaysFromSqlite(dbPath, user.id);
+  const result = await importGarminDaysFromSqlite(dbPath, userId);
   console.log(`Imported ${result.synced} day(s) into Postgres.`);
   return 0;
 }

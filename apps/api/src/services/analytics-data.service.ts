@@ -3,17 +3,15 @@ import { sql } from "../db/index.js";
 import { METRICS_VERSION, type ActivityMetrics } from "../lib/activity-metrics.js";
 import type { AnalyticsActivity } from "../lib/analytics-activity.js";
 import { buildZoneBoundaries, buildZoneBoundariesKarvonen, estimateHrMax } from "../lib/hr-zones.js";
-import { trimpCoefficientFor } from "../lib/trimp.js";
+import { activityLoad, trimpCoefficientFor } from "../lib/trimp.js";
+import { gapPaceSecPerKm, overallSegment } from "../lib/activity-metrics.js";
+import { toClassifiedRun } from "../lib/analytics-activity.js";
+import type { AnalysisByActivity } from "../lib/training-export.js";
 import { ensureActivityMetrics } from "./metrics.service.js";
 
 // Used for TRIMP when Garmin has never synced a resting HR — a typical adult
 // value, surfaced as `hrRestSource: "default"` rather than passed off as measured.
 const DEFAULT_HR_REST = 60;
-
-export async function getCurrentUserId(): Promise<string | null> {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  return user?.id ?? null;
-}
 
 export function physiologyFrom(input: {
   activityMaxHr: number | null;
@@ -136,4 +134,25 @@ export async function loadAnalyticsActivities(userId: string, opts: LoadActiviti
 export function streamsCoveragePct(activities: AnalyticsActivity[]): number | null {
   if (activities.length === 0) return null;
   return Math.round((activities.filter((a) => a.metrics !== null).length / activities.length) * 100);
+}
+
+// TRIMP, run class and GAP pace per activity, for the Claude export and the
+// activity detail note. `days` omitted = full history (run classes need each
+// activity's whole week to know whether it was the week's longest).
+export async function analyseActivities(userId: string, days?: number): Promise<AnalysisByActivity> {
+  const [physiology, loaded] = await Promise.all([getPhysiology(userId), loadAnalyticsActivities(userId, { days })]);
+  const result: AnalysisByActivity = {};
+  for (const a of loaded.activities) {
+    const { load, source } = activityLoad(
+      { histogram: a.metrics?.hrHistogram ?? null, averageHeartrate: a.averageHeartrate, movingTimeS: a.movingTimeS },
+      physiology,
+    );
+    const isRun = a.type === "Run";
+    result[a.id] = {
+      trimp: source === "none" ? null : load,
+      runClass: isRun ? toClassifiedRun(a, physiology.zones).runClass : null,
+      gapPaceSecPerKm: isRun && a.metrics ? gapPaceSecPerKm(overallSegment(a.metrics)) : null,
+    };
+  }
+  return result;
 }

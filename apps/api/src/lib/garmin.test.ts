@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toGarminDayPoint, validateGarminConfig, type GarminDayRow } from "./garmin";
+import { toGarminDayPoint, type GarminDayRow } from "./garmin";
 
 function makeRow(overrides: Partial<GarminDayRow> = {}): GarminDayRow {
   return {
@@ -51,22 +51,5 @@ describe("toGarminDayPoint", () => {
     expect(point.hrvLastNightAvg).toBeNull();
     expect(point.hrvStatus).toBeNull();
     expect(point.trainingReadinessScore).toBeNull();
-  });
-});
-
-describe("validateGarminConfig", () => {
-  it("returns null when any required env var is missing", () => {
-    expect(validateGarminConfig({})).toBeNull();
-    expect(validateGarminConfig({ GARMIN_EMAIL: "a@b.com" })).toBeNull();
-    expect(validateGarminConfig({ GARMIN_EMAIL: "a@b.com", GARMIN_PASSWORD: "x" })).toBeNull();
-  });
-
-  it("returns the config when all three env vars are present", () => {
-    const config = validateGarminConfig({
-      GARMIN_EMAIL: "a@b.com",
-      GARMIN_PASSWORD: "x",
-      GARMY_DB_PATH: "./health.db",
-    });
-    expect(config).toEqual({ email: "a@b.com", password: "x", dbPath: "./health.db" });
   });
 });

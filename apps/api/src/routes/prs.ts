@@ -9,18 +9,19 @@ import {
   type ManualPrRow,
 } from "../lib/personal-records.js";
 import type { ManualPrEntry } from "@goalsplit/types";
+import { getCurrentUserId } from "../services/user.service.js";
 
 export const prsRouter = Router();
 
 prsRouter.get("/", async (_req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) return res.json({ data: { records: [], manualEntries: [] } });
+  const userId = await getCurrentUserId();
+  if (!userId) return res.json({ data: { records: [], manualEntries: [] } });
 
   // All activities, not date-windowed — a PR can come from any point in history.
   const activityRows = await sql<{ id: string; strava_id: number; name: string; local_date: string }[]>`
     SELECT id, strava_id, name, (start_date_local AT TIME ZONE 'UTC')::date::text AS local_date
     FROM activities
-    WHERE user_id = ${user.id}
+    WHERE user_id = ${userId}
     ORDER BY start_date_local
   `;
 
@@ -53,7 +54,7 @@ prsRouter.get("/", async (_req, res) => {
            m.notes, m.source_activity_id, a.name AS source_activity_name, m.created_at
     FROM manual_prs m
     LEFT JOIN activities a ON a.id = m.source_activity_id
-    WHERE m.user_id = ${user.id}
+    WHERE m.user_id = ${userId}
     ORDER BY m.achieved_date DESC
   `;
   const manualEntries: ManualPrEntry[] = manualRows.map(toManualPrEntry);
@@ -69,8 +70,8 @@ prsRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: validation.error, statusCode: 400 });
   }
 
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     return res.status(401).json({ error: "Connect Strava before adding personal records", statusCode: 401 });
   }
 
@@ -84,7 +85,7 @@ prsRouter.post("/", async (req, res) => {
 
   if (sourceActivityId) {
     const [owned] = await sql<{ id: string }[]>`
-      SELECT id FROM activities WHERE id = ${sourceActivityId} AND user_id = ${user.id}
+      SELECT id FROM activities WHERE id = ${sourceActivityId} AND user_id = ${userId}
     `;
     if (!owned) {
       return res.status(400).json({ error: "sourceActivityId does not exist or isn't yours", statusCode: 400 });
@@ -94,7 +95,7 @@ prsRouter.post("/", async (req, res) => {
   const [row] = await sql<ManualPrRow[]>`
     INSERT INTO manual_prs (id, user_id, distance_label, time_seconds, achieved_date, notes, source_activity_id)
     VALUES (
-      ${crypto.randomUUID()}, ${user.id}, ${distanceLabel.trim()}, ${timeSeconds}, ${achievedDate},
+      ${crypto.randomUUID()}, ${userId}, ${distanceLabel.trim()}, ${timeSeconds}, ${achievedDate},
       ${notes?.trim() || null}, ${sourceActivityId || null}
     )
     RETURNING id, distance_label, time_seconds, achieved_date::text AS achieved_date,
@@ -112,11 +113,11 @@ prsRouter.post("/", async (req, res) => {
 });
 
 prsRouter.delete("/:id", async (req, res) => {
-  const [user] = await sql<{ id: string }[]>`SELECT id FROM users LIMIT 1`;
-  if (!user) return res.status(404).json({ error: "Not found", statusCode: 404 });
+  const userId = await getCurrentUserId();
+  if (!userId) return res.status(404).json({ error: "Not found", statusCode: 404 });
 
   const result = await sql`
-    DELETE FROM manual_prs WHERE id = ${req.params.id} AND user_id = ${user.id}
+    DELETE FROM manual_prs WHERE id = ${req.params.id} AND user_id = ${userId}
   `;
 
   if (result.count === 0) {

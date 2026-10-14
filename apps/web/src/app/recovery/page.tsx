@@ -1,5 +1,4 @@
 import { StatCard } from "@/components/stat-card";
-import { GarminSyncButton } from "@/components/garmin-sync-button";
 import { RestingHrChart } from "@/components/resting-hr-chart";
 import { SleepChart } from "@/components/sleep-chart";
 import { serverFetch } from "@/lib/api";
@@ -13,14 +12,11 @@ export default async function RecoveryPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Recovery</h1>
-          <p className="mt-1 text-neutral-400">
-            All-day wellness data from Garmin — resting HR, sleep, and readiness Strava can&rsquo;t see.
-          </p>
-        </div>
-        <GarminSyncButton />
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Recovery</h1>
+        <p className="mt-1 text-neutral-400">
+          All-day wellness data from Garmin — resting HR, sleep, and readiness Strava can&rsquo;t see. Synced daily.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
