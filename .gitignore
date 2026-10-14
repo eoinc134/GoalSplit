@@ -56,3 +56,8 @@ home-sync.log
 # python
 __pycache__/
 *.pyc
+
+# research (Python)
+.venv/
+.ipynb_checkpoints/
+research/data/

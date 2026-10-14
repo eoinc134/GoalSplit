@@ -90,6 +90,17 @@ exposed to Claude through an MCP server, for AI-assisted coaching conversations.
 Built with Next.js, Express, PostgreSQL and TypeScript. To run it, deploy it or set up
 syncing, see **[docs/SETUP.md](docs/SETUP.md)**.
 
+## Research
+
+Beyond the descriptive analytics, [research/](research/) holds statistical and
+predictive questions answered in Python against the same data, each starting as a
+written proposal:
+
+1. [Training load vs performance](research/proposals/01-training-load-vs-performance.md):
+   fitting an individual fitness–fatigue model and testing it out of sample.
+2. [Bottleneck identifier](research/proposals/02-bottleneck-identifier.md): which part
+   of fitness most limits performance for a target event.
+
 ## Future additions
 
 - **Training-block comparison:** compare blocks (e.g. a marathon build) on volume

@@ -1,0 +1,15 @@
+# Analysis
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+statsmodels>=0.14
+
+# Data access
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+python-dotenv>=1.0
+requests>=2.32
+
+# Notebooks and plots
+jupyterlab>=4.2
+matplotlib>=3.9
