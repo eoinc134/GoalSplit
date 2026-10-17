@@ -189,7 +189,7 @@ function mergeSegments(a: Segment, b: Segment): Segment {
 }
 
 export function overallSegment(m: ActivityMetrics): Segment {
-  return m.quarters.reduce(mergeSegments, emptySegment());
+  return m.quarters.reduce((acc, q) => mergeSegments(acc, q), emptySegment());
 }
 
 export function gapPaceSecPerKm(seg: Segment): number | null {

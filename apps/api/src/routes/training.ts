@@ -236,7 +236,7 @@ trainingRouter.get("/intensity", async (req, res) => {
     weeks,
     zoneModel: physiology.zoneModel,
     weekly,
-    overall: summarizeIntensity([...byWeek.values()].reduce(addZoneMinutes, emptyZoneMinutes())),
+    overall: summarizeIntensity([...byWeek.values()].reduce((acc, week) => addZoneMinutes(acc, week), emptyZoneMinutes())),
     streamsCoveragePct: streamsCoveragePct(inWindow),
   };
   return res.json({ data: summary });

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { activityLoad, trimpCoefficientFor, trimpFromAverage, trimpFromHistogram, trimpWeight } from "./trimp";
 import type { HrBucket } from "./activity-metrics";
 
-const P = { hrMax: 190, hrRest: 50, trimpCoefficient: 1.92 };
+const P = { hrMax: 190, hrRest: 50, sex: null } as const;
 
 describe("Banister TRIMP", () => {
   it("picks the sex-specific coefficient, defaulting to the male one", () => {
@@ -17,7 +17,7 @@ describe("Banister TRIMP", () => {
   });
 
   it("uses the paired female coefficients (0.86, 1.67)", () => {
-    expect(trimpFromAverage(120, 3600, { ...P, trimpCoefficient: 1.67 })).toBeCloseTo(60 * 0.5 * 0.86 * Math.exp(1.67 * 0.5), 5);
+    expect(trimpFromAverage(120, 3600, { ...P, sex: "F" })).toBeCloseTo(60 * 0.5 * 0.86 * Math.exp(1.67 * 0.5), 5);
   });
 
   it("clamps HRR to [0, 1]", () => {
