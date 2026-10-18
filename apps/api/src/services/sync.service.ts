@@ -39,8 +39,18 @@ async function upsertActivity(
       NOW()
     )
     ON CONFLICT (strava_id) DO UPDATE SET
-      name      = EXCLUDED.name,
-      synced_at = NOW()
+      name                 = EXCLUDED.name,
+      type                 = EXCLUDED.type,
+      sport_type           = EXCLUDED.sport_type,
+      distance             = EXCLUDED.distance,
+      moving_time          = EXCLUDED.moving_time,
+      elapsed_time         = EXCLUDED.elapsed_time,
+      total_elevation_gain = EXCLUDED.total_elevation_gain,
+      average_speed        = EXCLUDED.average_speed,
+      max_speed            = EXCLUDED.max_speed,
+      average_heartrate    = EXCLUDED.average_heartrate,
+      max_heartrate        = EXCLUDED.max_heartrate,
+      synced_at            = NOW()
     RETURNING id, (xmax = 0) AS inserted
   `;
   return row;
@@ -69,6 +79,13 @@ async function insertDump(
     VALUES (${crypto.randomUUID()}, ${activityId}, ${stravaId}, ${source}, ${sql.json(payload as postgres.JSONValue)})
   `;
 }
+
+// A normal sync also re-reads the last week of already-synced activities, so
+// edits made on Strava after syncing (run type tag, name, a cropped distance)
+// come through without a full backfill. Costs no extra detail/streams calls —
+// those are only fetched for new activities — and the list pages were being
+// fetched anyway.
+const RECHECK_WINDOW_S = 7 * 86_400;
 
 // Strava limits: 100 req/15min (read), 1000 req/day.
 // We stop making further requests once we've used ≥80% of the 15-minute read quota.
@@ -123,7 +140,8 @@ export async function syncActivities(userId: string, options: SyncOptions = {}):
   const accessToken = await getValidAccessToken();
   if (!accessToken) throw new Error("Not connected to Strava");
 
-  const after = options.full ? null : await getLastActivityTimestamp(userId);
+  const lastSynced = options.full ? null : await getLastActivityTimestamp(userId);
+  const after = lastSynced === null ? null : lastSynced - RECHECK_WINDOW_S;
   let page = 1;
   let totalSynced = 0;
   let rateFraction = 0;

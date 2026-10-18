@@ -109,6 +109,22 @@ describe("syncActivities", () => {
     expect(mockSql).toHaveBeenCalledTimes(4);
   });
 
+  it("re-reads the last 7 days before the newest synced activity, to pick up edits made on Strava", async () => {
+    // getLastActivityTimestamp, upsertActivity, insertDump(list)
+    queueSql([{ last_ts: 1_760_000_000 }], [{ id: "act-1", inserted: false }], []);
+    mockActivitiesPage();
+
+    await syncActivities("user-1");
+
+    expect(mockFetchActivities).toHaveBeenCalledWith("token-abc", {
+      after: 1_760_000_000 - 7 * 86_400,
+      page: 1,
+      perPage: 200,
+    });
+    // An already-stored activity gets a fresh list dump (new tags) but no re-fetch of detail/streams.
+    expect(mockFetchActivityDetail).not.toHaveBeenCalled();
+  });
+
   it("full backfill ignores the last-synced cursor and backfills missing detail/streams dumps", async () => {
     // upsertActivity, insertDump(list), hasDump(detail), insertDump(detail), hasDump(streams), insertDump(streams)
     queueSql(

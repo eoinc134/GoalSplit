@@ -33,6 +33,11 @@ Other commands: `npm run build`, `npm run test`, `npm run type-check`, `npm run 
    100 requests per 15 minutes, so the backfill stops at ~80 % of that and resumes on
    the next click.
 
+**After each run:** set the run type on Strava (*Race*, *Long Run* or *Workout*;
+leave easy runs as default) and give workouts a descriptive name, then **Sync**.
+Sync also re-reads the past 7 days, so edits made after syncing come through. Edits
+to anything older need **Backfill History**.
+
 Raw Strava payloads are kept in an append-only `activity_dumps` table, so nothing ever
 needs re-fetching. Each activity's streams are summarised once into `activity_metrics`
 (see [METHODS.md](METHODS.md#data-and-preprocessing)). The summary fills in lazily on
