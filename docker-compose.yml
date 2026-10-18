@@ -15,5 +15,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # Read-only snapshot of production for research/ — see research/README.md.
+  # Its own server so a snapshot never overwrites local dev data, and on
+  # Postgres 18 to match Railway (a v18 dump doesn't restore cleanly into 16).
+  # Only starts with: docker compose --profile research up -d
+  research-db:
+    image: postgres:18-alpine
+    profiles: ["research"]
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: goalsplit_snapshot
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # v18 images keep data under /var/lib/postgresql/18/docker.
+      - research_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
+  research_data:

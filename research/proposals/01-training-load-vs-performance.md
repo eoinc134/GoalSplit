@@ -17,6 +17,23 @@ convention into a testable claim about one athlete, and gives practical answers:
 - Does ramping load actually move my aerobic efficiency, and with what lag?
 - How much of my week-to-week performance variation is explained by load at all?
 
+## Design changes after the data audit
+
+[`notebooks/00-data-audit.ipynb`](../notebooks/00-data-audit.ipynb) changed three
+things in the plan below:
+
+- **Runs, not weeks, are the unit of analysis.** Weekly median EF turned out to be
+  mostly noise (signal-to-noise 0.5–0.8). The model is instead fitted with each of
+  the 216 runs as an observation, `EF_run = p₀ + k₁·fitness − k₂·fatigue + β·intensity
+  + γ·duration + δ·hilly + ε`, with intensity as average %HRR. It stays linear for
+  fixed (τ₁, τ₂), so the grid-search estimation is unchanged. Rolling-origin
+  evaluation forecasts the next 4 weeks of runs.
+- **Races are validation, not training data.** No run was tagged as a race; about 12
+  genuine races were identified and need tagging on Strava. The model's predicted
+  fitness on race days is compared with race VDOT (road races up to the marathon;
+  trail and ultra events excluded).
+- **Garmin is out of scope.** There are 13 days of data and no HRV.
+
 ## Hypotheses
 
 - **H1:** A fitted fitness–fatigue model predicts held-out weekly performance better
@@ -32,7 +49,7 @@ Each can fail. A failure is reported as a finding, not buried.
 | Input | Source | Notes |
 |---|---|---|
 | Daily training load | TRIMP per activity (`activity_metrics` HR histograms, or average HR) | Rest days count as zero |
-| Submaximal performance | Weekly median efficiency factor (EF) of aerobic runs; weekly Z2 pace | Dense (most weeks), but noisy |
+| Submaximal performance | Efficiency factor (EF) of each run, with intensity and duration as covariates | 216 runs; see "Design changes" above |
 | Maximal performance | Performance index from races and hard best efforts (see below) | Sparse, but measures actual race fitness |
 | Context covariates | Run class, GAP, terrain (hilly flag), Garmin resting HR | For controls and sensitivity checks |
 
