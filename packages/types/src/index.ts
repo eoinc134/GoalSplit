@@ -218,6 +218,53 @@ export interface PersonalRecords {
   manualEntries: ManualPrEntry[]; // raw manual rows, for the management/delete UI
 }
 
+// ── Race predictions ─────────────────────────────────────────────────────────
+// Daniels VDOT equivalents from recent road races, with a per-distance
+// adjustment learned from the athlete's own race history (see METHODS.md).
+
+export interface RoadRace {
+  activityId: string;
+  name: string;
+  localDate: string; // YYYY-MM-DD
+  distanceM: number; // from the title, the nearest standard distance, or GPS
+  distanceSource: "title" | "standard" | "gps";
+  timeS: number; // official time from the title, else moving time
+  timeSource: "title" | "moving";
+  vdot: number;
+}
+
+export interface RacePrediction {
+  label: string; // "5K", "10K", "Half marathon", "Marathon"
+  distanceM: number;
+  timeS: number; // Daniels VDOT equivalent at the current level
+  adjustedTimeS: number | null; // with the athlete's own history at this distance; null without any
+  adjustmentPct: number | null;
+  historyCount: number; // past races at this distance the adjustment rests on
+}
+
+export interface BacktestRow {
+  activityId: string;
+  name: string;
+  localDate: string;
+  distanceM: number;
+  actualS: number;
+  predictedS: number; // made using only the races before it
+  errorPct: number; // (predicted − actual) / actual; negative = predicted too fast
+}
+
+export interface RacePredictionSummary {
+  level: {
+    vdot: number;
+    basedOn: { name: string; localDate: string; vdot: number }[]; // races the level comes from
+    windowDays: number;
+    stale: boolean; // no road race within the window — level from the most recent one instead
+  } | null; // null without any qualifying road race
+  predictions: RacePrediction[];
+  typicalErrorPct: number | null; // mean absolute backtest error; null under 3 backtested races
+  backtest: BacktestRow[]; // most recent first
+  races: RoadRace[]; // all qualifying road races, most recent first
+}
+
 // ── HR-zone analytics & aerobic decoupling ──────────────────────────────────
 
 export interface HrZoneBoundary {

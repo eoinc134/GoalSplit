@@ -14,6 +14,7 @@ end), applied to one athlete's Strava and Garmin data. Implementation lives in
 - [Aerobic efficiency](#aerobic-efficiency)
 - [Long runs](#long-runs)
 - [Change-point detection](#change-point-detection)
+- [Race predictions](#race-predictions)
 - [Run classification](#run-classification)
 - [Context and confounders](#context-and-confounders)
 - [Known limitations](#known-limitations)
@@ -294,6 +295,71 @@ Each change is reported as the first week of the new level, the means before and
 after, and the percentage change. Weeks with no data are skipped rather than treated as
 zero, except for load, where a zero week is real.
 
+## Race predictions
+
+The Records page predicts 5K, 10K, half-marathon and marathon times from the
+athlete's recent road races.
+
+**Which races count.** Runs tagged *Race* on Strava that are road races at a genuine
+effort:
+
+- not hilly (under 15 m of climbing per km)
+- at most 43 km
+- average HR at least 80% of HRmax (when recorded)
+
+Trail and ultra events are excluded, since VDOT assumes flat road racing.
+
+**Distance and time come from the title first.** GPS routinely reads courses a few
+percent long, so:
+
+- **Distance:** the distance written in the title ("10k", "half", "marathon",
+  "parkrun"), else the standard distance if GPS is within ±6% of one, else GPS.
+- **Time:** an official time in brackets in the title, e.g. "Pisa 10k (44:25)", else
+  moving time.
+
+**Current level.** Each race is converted to Daniels' VDOT (Daniels & Gilbert,
+1979), the VO₂max implied by the performance:
+
+```
+VDOT = VO₂(pace) / fraction of VO₂max sustainable for that duration
+VO₂(v) = −4.60 + 0.182258·v + 0.000104·v²            (v in m/min)
+fraction = 0.8 + 0.1894393·e^(−0.012778·t) + 0.2989558·e^(−0.1932605·t)   (t in min)
+```
+
+The current level is the **median** VDOT of road races in the last 180 days. Median,
+not best: the best recent race backtested as consistently optimistic (predictions
+3.8% too fast). With no race in that window, the most recent race stands in, and the
+page says the prediction reflects fitness on that date.
+
+**Predicted time.** The time at each distance that gives the same VDOT, found by
+bisection.
+
+**Adjusted for your record.** VDOT tables assume a typical speed–endurance balance.
+Each past race is predicted from only the races before it. The mean log ratio of
+actual to predicted time at that distance band (≤7.5 km, 10 km, half to 30 km,
+marathon) becomes a correction:
+
+```
+adjustment = exp( mean(ln(actual / predicted)) × n / (n + 1) )
+```
+
+The `n / (n + 1)` factor shrinks the correction towards zero, so a single race can
+only move the prediction halfway. The adjusted column only appears where the athlete
+has history at that distance, and shows how many races it rests on.
+
+**Typical error.** The mean absolute error of those race-by-race backtests, shown
+next to the predictions. The full backtest table is on the page, too.
+
+**Development and limits.**
+- The rules were developed and backtested in `research/`.
+- With about 12–15 races, the alternatives tried all land within noise of each
+  other: best vs median vs most recent race as the level, a personal Riegel exponent,
+  and per-distance calibration. Typical error was 6–8%.
+- A personal Riegel exponent estimated from race pairs didn't help, because the pairs
+  are mostly 5K–10K, where pacing falls off normally; it can't see an endurance
+  falloff past the half marathon.
+- Marathon adjustments rest on very few races, and the page says so.
+
 ## Run classification
 
 Each run gets a class so the trends compare like with like. The athlete's own Strava
@@ -350,6 +416,7 @@ Runs with at least 15 m of climbing per km are also flagged **hilly**.
 ## References
 
 - Banister, E. W. (1991). Modeling elite athletic performance. In *Physiological Testing of Elite Athletes*. Human Kinetics.
+- Daniels, J., & Gilbert, J. (1979). *Oxygen Power: Performance Tables for Distance Runners.*
 - Foster, C. (1998). Monitoring training in athletes with reference to overtraining syndrome. *Medicine & Science in Sports & Exercise*, 30(7), 1164–1168.
 - Friel, J. *The Triathlete's Training Bible* / TrainingPeaks articles on efficiency factor and aerobic decoupling.
 - Gabbett, T. J. (2016). The training–injury prevention paradox. *British Journal of Sports Medicine*, 50(5), 273–280.

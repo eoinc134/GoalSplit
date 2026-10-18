@@ -1,4 +1,9 @@
-"""Analysis tables shared by the Proposal 1 notebooks."""
+"""Analysis tables shared by the Proposal 1 notebooks.
+
+The race rules here (distance and time from the title, road-race filter) are
+mirrored in apps/api/src/lib/race-prediction.ts, which powers the Records
+page predictions. Change both together.
+"""
 
 import re
 

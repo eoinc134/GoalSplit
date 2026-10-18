@@ -10,8 +10,24 @@ import {
 } from "../lib/personal-records.js";
 import type { ManualPrEntry } from "@goalsplit/types";
 import { getCurrentUserId } from "../services/user.service.js";
+import { getPhysiology, loadAnalyticsActivities } from "../services/analytics-data.service.js";
+import { buildRacePredictions, selectRoadRaces } from "../lib/race-prediction.js";
 
 export const prsRouter = Router();
+
+// Race-time predictions from recent road races (see lib/race-prediction.ts).
+prsRouter.get("/predictions", async (_req, res) => {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return res.json({ data: buildRacePredictions([], new Date().toISOString().slice(0, 10)) });
+  }
+  const [physiology, loaded] = await Promise.all([
+    getPhysiology(userId),
+    loadAnalyticsActivities(userId, { runsOnly: true }),
+  ]);
+  const races = selectRoadRaces(loaded.activities, physiology.hrMax);
+  return res.json({ data: buildRacePredictions(races, loaded.today) });
+});
 
 prsRouter.get("/", async (_req, res) => {
   const userId = await getCurrentUserId();

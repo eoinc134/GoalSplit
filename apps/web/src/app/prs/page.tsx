@@ -1,15 +1,18 @@
 import { PrManager } from "@/components/pr-manager";
+import { RacePredictions } from "@/components/race-predictions";
 import { serverFetch } from "@/lib/api";
 import { formatTime, formatDate } from "@/lib/format";
-import type { PersonalRecords } from "@goalsplit/types";
+import type { PersonalRecords, RacePredictionSummary } from "@goalsplit/types";
 import type { ActivityRow } from "@/lib/types";
 
 const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
+const PREDICTIONS_FALLBACK: RacePredictionSummary = { level: null, predictions: [], typicalErrorPct: null, backtest: [], races: [] };
 
 export default async function PrsPage() {
-  const [prs, activities] = await Promise.all([
+  const [prs, activities, predictions] = await Promise.all([
     serverFetch<PersonalRecords>("/prs", PRS_FALLBACK),
     serverFetch<ActivityRow[]>("/activities?limit=200", []),
+    serverFetch<RacePredictionSummary>("/prs/predictions", PREDICTIONS_FALLBACK),
   ]);
 
   return (
@@ -62,6 +65,8 @@ export default async function PrsPage() {
           </table>
         )}
       </div>
+
+      <RacePredictions summary={predictions} />
 
       <PrManager initialManualEntries={prs.manualEntries} activities={activities} />
     </div>

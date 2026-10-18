@@ -27,6 +27,7 @@ Every metric is defined, with its formula, assumptions and references, in
 | Change detection | Training phases from weekly load; sustained shifts in efficiency and Z2 pace | Penalised mean-shift segmentation (optimal partitioning / PELT) |
 | Recovery | Resting HR, HRV, sleep, Garmin training readiness | Garmin |
 | Records | Best efforts per distance, Strava-derived plus manual corrections | — |
+| Race predictions | 5K–marathon times from recent road races, adjusted by the athlete's own record at each distance, with backtested error | Daniels VDOT (1979) |
 
 ## Screenshots
 
@@ -117,5 +118,5 @@ written proposal:
   against a personal baseline. (HRV isn't available on the current watch.)
 - **Weather context:** historical temperature and humidity for each run's time and
   place, replacing the watch's skin-warmed temperature sensor in the heat adjustment.
-- **Race prediction:** critical speed and D′ fitted to best efforts across durations,
+- **Critical speed:** critical speed and D′ fitted to best efforts across durations,
   tracked over time.
