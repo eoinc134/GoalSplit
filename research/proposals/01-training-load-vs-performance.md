@@ -1,5 +1,7 @@
 # Proposal 1: Training load vs performance
 
+**Status: complete.** Findings: [findings/01-training-load-vs-performance.md](../findings/01-training-load-vs-performance.md)
+
 > **Question:** Does my training load predict my performance, and on what timescale?
 > How long does fitness from training last for me, and how long does fatigue take
 > to clear?

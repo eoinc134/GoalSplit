@@ -12,7 +12,7 @@ the findings.
 
 | # | Question | Status |
 |---|---|---|
-| 1 | [Training load vs performance](proposals/01-training-load-vs-performance.md): does my training load predict my performance, and on what timescale? | In progress: audit, 01a and 01b done; 01c (dose–response) next |
+| 1 | [Training load vs performance](proposals/01-training-load-vs-performance.md): does my training load predict my performance, and on what timescale? | **Done**: [findings](findings/01-training-load-vs-performance.md) |
 | 2 | [Bottleneck identifier](proposals/02-bottleneck-identifier.md): which part of my fitness is limiting performance right now? | Proposed |
 
 Both start from the same **data audit** (step 0 below), which settles what's
@@ -35,7 +35,7 @@ bottleneck ranking with evidence from this athlete's own data.
 
 ## Layout
 
-`findings/` is created when the first question is finished.
+Each finished question gets a write-up in `findings/`.
 
 ```
 research/

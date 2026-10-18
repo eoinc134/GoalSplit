@@ -98,6 +98,10 @@ written proposal:
 
 1. [Training load vs performance](research/proposals/01-training-load-vs-performance.md):
    fitting an individual fitness–fatigue model and testing it out of sample.
+   **[Findings](research/findings/01-training-load-vs-performance.md):** efficiency
+   tracks the last two weeks of training (about 4–5% between a light and a heavy
+   fortnight), but separate fitness and fatigue components aren't identifiable, and
+   part of the link is reverse causation.
 2. [Bottleneck identifier](research/proposals/02-bottleneck-identifier.md): which part
    of fitness most limits performance for a target event.
 

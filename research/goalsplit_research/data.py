@@ -24,8 +24,15 @@ def fetch_dataset(refresh: bool = False) -> dict:
     cache = DATA_DIR / f"dataset-{date.today().isoformat()}.json"
     if cache.exists() and not refresh:
         return json.loads(cache.read_text(encoding="utf-8"))
-    res = requests.get(f"{api_url()}/research/dataset", timeout=120)
-    res.raise_for_status()
+    try:
+        res = requests.get(f"{api_url()}/research/dataset", timeout=120)
+        res.raise_for_status()
+    except requests.RequestException as err:
+        cached = sorted(DATA_DIR.glob("dataset-*.json"))
+        if refresh or not cached:
+            raise
+        print(f"API unavailable ({type(err).__name__}); using the latest cached dataset, {cached[-1].name}")
+        return json.loads(cached[-1].read_text(encoding="utf-8"))
     dataset = res.json()["data"]
     cache.write_text(json.dumps(dataset), encoding="utf-8")
     return dataset
