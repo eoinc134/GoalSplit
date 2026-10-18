@@ -13,3 +13,6 @@ requests>=2.32
 # Notebooks and plots
 jupyterlab>=4.2
 matplotlib>=3.9
+
+# Tests
+pytest>=8.0
