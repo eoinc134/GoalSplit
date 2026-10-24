@@ -10,12 +10,12 @@ PostgreSQL · shared TypeScript types (`packages/types`) · MCP server for Claud
 
 ## Run locally
 
-Requires Node.js, Docker Desktop, and Python 3.8+ (Garmin sync only).
+Requires Node.js and Docker Desktop (plus Python 3.11+ for `research/` only).
 
 ```sh
 npm install
 cp .env.example .env                  # Docker Compose variables
-cp apps/api/.env.example apps/api/.env # add Strava credentials (Garmin ones go in .env.home-sync)
+cp apps/api/.env.example apps/api/.env # add Strava credentials and the Garmin API key
 docker compose up -d                  # Postgres on port 5433; schema is created on API start
 npm run dev                           # web on :3000, API on :3001
 ```
@@ -47,20 +47,21 @@ selects the TRIMP coefficients.
 
 ## Garmin
 
-Garmin provides resting HR, HRV, sleep and readiness, and its resting HR turns on
-Karvonen zones. It uses [garmy](https://github.com/bes-dev/garmy), an unofficial Python
-client, through `apps/api/scripts/garmy_sync.py`. Garmin blocks Railway's IP, so the sync
-runs from a home machine and writes straight into the production database.
+Garmin provides resting HR, sleep, stress and Body Battery (and HRV on watches that
+record it). Its resting HR switches heart-rate zones to Karvonen. Data comes from
+Garmin's official **Personal API** (free, launched October 2026), so it runs from the
+API itself: no password, no home machine.
 
-1. `python -m pip install garmy[localdb]`
-2. Copy `.env.home-sync.example` to `.env.home-sync` and fill in `GARMIN_EMAIL`,
-   `GARMIN_PASSWORD` and `DATABASE_URL`. Use the Railway Postgres **public** connection
-   string (`*.proxy.rlwy.net`).
-3. `npm run build --workspace=apps/api`, then run `scripts\home-garmin-sync.ps1` once to check it works.
-4. Schedule it daily in Windows Task Scheduler: `powershell.exe -ExecutionPolicy Bypass -File "<repo>\scripts\home-garmin-sync.ps1"`.
+1. In Garmin Connect (web), open account settings → **Personal API Key** → **Create
+   Key**, and choose an expiry (30 days to a year). The key is shown only once.
+2. Set `GARMIN_API=<key>` in `apps/api/.env`, and in the API service's Railway variables.
+3. **Sync** on the dashboard also refreshes Garmin. The first sync backfills everything
+   since your first Strava activity, and later ones re-read the last week.
+   `POST /api/garmin/sync?days=N` re-syncs the last N days on demand.
 
-MFA must be off on the Garmin account. The login session is cached in `garmy-tokens/`,
-so only the first run, or one after a long gap, does a full login.
+When the key expires, sync reports "Garmin rejected the API key": create a new one
+and update `GARMIN_API`. Resting HR from days the watch was barely worn is discarded
+(see [METHODS.md](METHODS.md#heart-rate-zones)).
 
 ## Claude via MCP
 
@@ -85,7 +86,7 @@ Two services from this repo, plus a Postgres add-on.
 
 | Service | Build | Start | Env |
 |---|---|---|---|
-| API | `npm ci && npx turbo build --filter=@goalsplit/api` | `node apps/api/dist/index.js` | `DATABASE_URL`, `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI` (`https://<api>/api/auth/strava/callback`), `FRONTEND_URL` |
+| API | `npm ci && npx turbo build --filter=@goalsplit/api` | `node apps/api/dist/index.js` | `DATABASE_URL`, `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI` (`https://<api>/api/auth/strava/callback`), `FRONTEND_URL`, `GARMIN_API` |
 | Web | `npm ci && npx turbo build --filter=@goalsplit/web` | `npm run start --workspace=apps/web` | `NEXT_PUBLIC_API_URL` (`https://<api>/api`, baked in at build — redeploy after changing) |
 
 Set the Strava app's callback domain to the API's Railway domain.
@@ -106,4 +107,5 @@ Set the Strava app's callback domain to the API's Railway domain.
 | `GET` | `/api/activities/export?days=&type=&format=markdown\|json` | Training log for Claude |
 | `GET` / `POST` / `DELETE` | `/api/prs` | Personal records (Strava-derived + manual) |
 | `GET` | `/api/garmin/days?days=7–365` | Daily Garmin wellness data |
+| `POST` | `/api/garmin/sync[?days=N]` | Pull from Garmin's Personal API (full history on first sync) |
 | `GET` | `/api/auth/strava` · `/api/auth/status` | Strava OAuth and connection status |

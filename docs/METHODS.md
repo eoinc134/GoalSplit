@@ -28,7 +28,7 @@ end), applied to one athlete's Strava and Garmin data. Implementation lives in
 |---|---|
 | Strava activity summaries | Date, duration, distance, elevation gain, average/max HR, the athlete's own workout tag (race / long run / workout) |
 | Strava streams | Second-by-second time, distance, heart rate, grade, altitude, moving flag, device temperature |
-| Garmin Connect | Daily resting HR, all-day max HR, HRV, sleep, stress, Body Battery, training readiness |
+| Garmin Personal API | Daily resting HR, all-day max and min HR, sleep, stress, Body Battery, steps (HRV where the watch records it) |
 
 Each activity's streams are reduced once to a compact summary, which every analysis
 below reads instead of the raw streams:
@@ -52,7 +52,9 @@ Cleaning rules:
 all-day monitoring. It's a field estimate, not a lab test, and a single sensor spike
 would inflate it.
 
-**HRrest** is the median Garmin resting HR over the 90 days up to the latest reading.
+**HRrest** is the median Garmin resting HR over the 90 days up to the latest reading. Garmin reports a "resting" HR even on days the watch was barely worn (e.g. 148 bpm on
+a day whose minimum was 101), so a day's value is only kept with at least 12 hours of
+wear, within 10 bpm of that day's minimum, and at most 100 bpm.
 The median keeps one bad night from shifting every zone. Without Garmin data it
 defaults to 60 bpm, and the app says so.
 

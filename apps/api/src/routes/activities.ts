@@ -10,6 +10,7 @@ import {
 import { buildActivityRoutes } from "../lib/polyline.js";
 import { getCurrentUserId } from "../services/user.service.js";
 import { ensureActivityMetrics } from "../services/metrics.service.js";
+import { defaultSyncRange, garminConfigured, syncGarmin } from "../services/garmin-api.service.js";
 import { analyseActivities } from "../services/analytics-data.service.js";
 
 export const activitiesRouter = Router();
@@ -150,6 +151,13 @@ activitiesRouter.post("/sync", async (req, res) => {
     // Training-page load. Not awaited — a long backfill can take a while, and
     // the analytics endpoints still fill any gap lazily if this hasn't finished.
     ensureActivityMetrics(userId).catch((err: unknown) => console.error("Metrics precompute failed:", err));
+    // Refresh Garmin wellness data alongside, so one Sync keeps everything current.
+    if (garminConfigured()) {
+      const today = new Date().toISOString().slice(0, 10);
+      defaultSyncRange(userId, today)
+        .then(({ start, end }) => syncGarmin(userId, start, end))
+        .catch((err: unknown) => console.error("Garmin sync failed:", err));
+    }
     return res.json({ data: result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Sync failed";

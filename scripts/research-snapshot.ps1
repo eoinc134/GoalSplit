@@ -1,8 +1,8 @@
 # Refreshes the local research snapshot (docker compose service `research-db`,
 # port 5434) from production. Read-only on Railway's side: pg_dump only reads.
 #
-# - Uses the public Railway connection string from .env.home-sync (the same one
-#   the home Garmin sync uses).
+# - Uses the public Railway connection string from .env.railway (copy
+#   .env.railway.example). Falls back to the legacy .env.home-sync if present.
 # - Skips strava_tokens' rows, so no OAuth tokens are copied off production.
 # - Replaces the whole snapshot each run, so the result is an exact copy of
 #   production at that moment.
@@ -10,10 +10,11 @@
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\research-snapshot.ps1
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$EnvFile = Join-Path $RepoRoot ".env.home-sync"
+$EnvFile = Join-Path $RepoRoot ".env.railway"
+if (-not (Test-Path $EnvFile)) { $EnvFile = Join-Path $RepoRoot ".env.home-sync" }
 
 if (-not (Test-Path $EnvFile)) {
-    Write-Error "$EnvFile not found - copy .env.home-sync.example and set DATABASE_URL first."
+    Write-Error ".env.railway not found - copy .env.railway.example and set DATABASE_URL first."
     exit 1
 }
 

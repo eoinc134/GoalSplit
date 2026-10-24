@@ -15,7 +15,7 @@ export default async function RecoveryPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Recovery</h1>
         <p className="mt-1 text-neutral-400">
-          All-day wellness data from Garmin — resting HR, sleep, and readiness Strava can&rsquo;t see. Synced daily.
+          All-day wellness data from Garmin — resting HR, sleep, and readiness Strava can&rsquo;t see. Updated with each Sync.
         </p>
       </div>
 

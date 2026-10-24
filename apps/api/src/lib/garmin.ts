@@ -1,7 +1,6 @@
 import type { GarminDayPoint } from "@goalsplit/types";
 
-// Column names exactly as garmy's `daily_health_metrics` SQLite table names them —
-// see docs/database-schema.md in https://github.com/bes-dev/garmy.
+// A garmin_days row as selected by GET /api/garmin/days (snake_case columns).
 export interface GarminDayRow {
   metric_date: string;
   resting_heart_rate: number | null;
@@ -20,7 +19,7 @@ export interface GarminDayRow {
   total_steps: number | null;
 }
 
-// snake_case (garmy's SQLite columns) -> camelCase (this app's wire format).
+// snake_case (database columns) -> camelCase (this app's wire format).
 // SQLite returns null for any metric that hasn't gathered enough data yet
 // (e.g. a day without an HRV reading) — passed through as-is, never defaulted.
 export function toGarminDayPoint(row: GarminDayRow): GarminDayPoint {

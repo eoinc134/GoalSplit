@@ -143,8 +143,8 @@ export async function initSchema(): Promise<void> {
   `;
 
   // All-day wellness metrics Strava structurally can't provide (it only sees
-  // HR during a recorded activity) — synced from garmy's local SQLite mirror
-  // of Garmin Connect (see apps/api/src/services/garmin-import.service.ts). This
+  // HR during a recorded activity) — pulled from Garmin's official Personal
+  // API (see apps/api/src/services/garmin-api.service.ts). This
   // is a derived, re-buildable copy for this app's own queries, not a second
   // independent source of truth — garmy's own SQLite file plays the
   // "never re-fetch" cache role that activity_dumps plays for Strava.
@@ -172,7 +172,7 @@ export async function initSchema(): Promise<void> {
     )
   `;
 
-  // Migration: average_heart_rate was originally INTEGER, but garmy computes
+  // Migration: average_heart_rate was originally INTEGER, but the old garmy sync computed
   // it as a mean across intraday readings (e.g. 58.9466...), which an
   // INTEGER column rejects outright — caught by an end-to-end test against
   // real data, not by any prior unit test (their fixtures all used

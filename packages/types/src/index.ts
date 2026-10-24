@@ -434,8 +434,8 @@ export interface ActivityRoute {
 
 // ── Garmin health data ───────────────────────────────────────────────────────
 // All-day wellness metrics Strava structurally can't provide (it only sees HR
-// during a recorded activity). Synced from a home machine via garmy's local
-// SQLite mirror — see apps/api/src/services/garmin-import.service.ts.
+// during a recorded activity). Pulled from Garmin's official Personal API —
+// see apps/api/src/services/garmin-api.service.ts.
 
 export interface GarminDayPoint {
   day: string; // YYYY-MM-DD

@@ -47,6 +47,11 @@ local-garmy-tokens
 railway_key
 railway_key.pub
 
+# Railway's public Postgres connection string, for scripts/research-snapshot.ps1
+.env.railway
+
+# Legacy garmy home-sync files (no longer used — safe to delete locally; kept
+# ignored so leftovers holding credentials or health data can't be committed).
 # Home-sync setup (Garmin credentials + Railway's public Postgres connection
 # string — see README's "Home-based Garmin sync" section)
 .env.home-sync
