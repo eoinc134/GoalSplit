@@ -457,6 +457,8 @@ export interface GarminDayPoint {
 
 export interface GarminDaysResponse {
   days: GarminDayPoint[]; // oldest first
+  latestDay: string | null; // newest day Garmin has data for, across all history
+  lastSyncedAt: string | null; // ISO 8601 — when garmin_days was last written
 }
 
 export interface GarminSyncResult {

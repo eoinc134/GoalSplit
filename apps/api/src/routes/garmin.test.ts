@@ -27,7 +27,7 @@ describe("GET /api/garmin/days", () => {
     mockSql.mockResolvedValueOnce([]); // users
     const res = await request(app).get("/api/garmin/days");
     expect(res.status).toBe(200);
-    expect(res.body.data.days).toEqual([]);
+    expect(res.body.data).toEqual({ days: [], latestDay: null, lastSyncedAt: null });
   });
 
   it("returns mapped day points for the user", async () => {
@@ -51,13 +51,15 @@ describe("GET /api/garmin/days", () => {
           hrv_status: "Balanced",
           total_steps: 8421,
         },
-      ]);
+      ])
+      .mockResolvedValueOnce([{ latest_day: "2026-06-01", last_synced_at: new Date("2026-06-02T08:00:00Z") }]); // freshness
 
     const res = await request(app).get("/api/garmin/days?days=30");
 
     expect(res.status).toBe(200);
     expect(res.body.data.days).toHaveLength(1);
     expect(res.body.data.days[0]).toMatchObject({ day: "2026-06-01", restingHeartRate: 52, hrvStatus: "Balanced" });
+    expect(res.body.data).toMatchObject({ latestDay: "2026-06-01", lastSyncedAt: "2026-06-02T08:00:00.000Z" });
   });
 });
 

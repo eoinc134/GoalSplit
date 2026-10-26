@@ -50,7 +50,7 @@ garminRouter.get("/days", async (req, res) => {
   const days = Math.min(Math.max(positiveInt(req.query.days) ?? 90, 7), 365);
 
   const userId = await getCurrentUserId();
-  if (!userId) return res.json({ data: { days: [] } });
+  if (!userId) return res.json({ data: { days: [], latestDay: null, lastSyncedAt: null } });
 
   const rows = await sql<GarminDayRow[]>`
     SELECT day::text AS metric_date, resting_heart_rate, max_heart_rate, min_heart_rate, average_heart_rate,
@@ -62,5 +62,15 @@ garminRouter.get("/days", async (req, res) => {
     ORDER BY day
   `;
 
-  return res.json({ data: { days: rows.map(toGarminDayPoint) } });
+  const [freshness] = await sql<{ latest_day: string | null; last_synced_at: Date | null }[]>`
+    SELECT MAX(day)::text AS latest_day, MAX(synced_at) AS last_synced_at FROM garmin_days WHERE user_id = ${userId}
+  `;
+
+  return res.json({
+    data: {
+      days: rows.map(toGarminDayPoint),
+      latestDay: freshness?.latest_day ?? null,
+      lastSyncedAt: freshness?.last_synced_at ? new Date(freshness.last_synced_at).toISOString() : null,
+    },
+  });
 });

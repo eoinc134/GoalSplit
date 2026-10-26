@@ -6,7 +6,7 @@ vi.mock("../db/index.js", () => ({
 }));
 
 import { sql } from "../db/index.js";
-import { fetchGarminDays, syncGarmin } from "./garmin-api.service.js";
+import { defaultSyncRange, fetchGarminDays, syncGarmin } from "./garmin-api.service.js";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const exp = Math.floor(Date.now() / 1000) + 24 * 3600;
@@ -80,5 +80,17 @@ describe("Garmin Personal API service", () => {
     const result = await syncGarmin("user-1", "2026-10-20", "2026-10-21");
     expect(result).toEqual({ synced: 1 });
     expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("defaultSyncRange", () => {
+  it("backfills from the first Strava activity when there's no older history — even with recent rows present", async () => {
+    mockSql.mockResolvedValueOnce([{ has_history: false, first_activity: "2024-02-06" }]);
+    expect(await defaultSyncRange("user-1", "2026-10-26")).toEqual({ start: "2024-02-06", end: "2026-10-26" });
+  });
+
+  it("re-reads only the last week once history exists", async () => {
+    mockSql.mockResolvedValueOnce([{ has_history: true, first_activity: "2024-02-06" }]);
+    expect(await defaultSyncRange("user-1", "2026-10-26")).toEqual({ start: "2026-10-20", end: "2026-10-26" });
   });
 });

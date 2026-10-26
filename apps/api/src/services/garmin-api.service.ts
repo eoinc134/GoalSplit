@@ -1,5 +1,6 @@
 import type { GarminDayPoint, GarminSyncResult } from "@goalsplit/types";
 import { sql } from "../db/index.js";
+import { addDaysUtc } from "../lib/dates.js";
 import {
   DAILY_CHUNK_DAYS,
   GARMIN_API_BASE,
@@ -117,18 +118,22 @@ export async function upsertGarminDays(userId: string, points: GarminDayPoint[])
   }
 }
 
-// The default range: everything since the first Strava activity on a first
-// sync (garmin_days empty), otherwise the last week — which also re-reads
-// recent days Garmin may still have been filling in.
+// History counts as missing when nothing is older than this — e.g. a database
+// holding only a few weeks from an earlier sync method. Checking for an empty
+// table isn't enough: leftover rows would block the backfill forever.
+const HISTORY_CHECK_DAYS = 60;
+
+// The default range: everything since the first Strava activity when history
+// is missing, otherwise the last week — which also re-reads recent days
+// Garmin may still have been filling in.
 export async function defaultSyncRange(userId: string, today: string): Promise<{ start: string; end: string }> {
-  const [row] = await sql<{ synced: number; first_activity: string | null }[]>`
-    SELECT (SELECT COUNT(*)::int FROM garmin_days WHERE user_id = ${userId}) AS synced,
+  const cutoff = addDaysUtc(today, -HISTORY_CHECK_DAYS);
+  const [row] = await sql<{ has_history: boolean; first_activity: string | null }[]>`
+    SELECT EXISTS(SELECT 1 FROM garmin_days WHERE user_id = ${userId} AND day < ${cutoff}::date) AS has_history,
            (SELECT MIN((start_date_local AT TIME ZONE 'UTC')::date)::text FROM activities WHERE user_id = ${userId}) AS first_activity
   `;
-  const weekAgo = new Date(`${today}T00:00:00Z`);
-  weekAgo.setUTCDate(weekAgo.getUTCDate() - 6);
-  const start = row.synced === 0 && row.first_activity ? row.first_activity : weekAgo.toISOString().slice(0, 10);
-  return { start, end: today };
+  const backfill = !row.has_history && row.first_activity !== null;
+  return { start: backfill ? row.first_activity! : addDaysUtc(today, -6), end: today };
 }
 
 export async function syncGarmin(userId: string, start: string, end: string): Promise<GarminSyncResult> {

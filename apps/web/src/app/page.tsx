@@ -4,6 +4,7 @@ import { BandBadge } from "@/components/band-badge";
 import { StravaConnect } from "@/components/strava-connect";
 import { ActivityList } from "@/components/activity-list";
 import { serverFetch } from "@/lib/api";
+import { GARMIN_FALLBACK, latestValue } from "@/lib/garmin";
 import { LOAD_FALLBACK } from "@/lib/analytics-fallbacks";
 import { formatTime, formatDate } from "@/lib/format";
 import type { TrainingLoadSummary, GarminDaysResponse, PersonalRecords, PrRecord } from "@goalsplit/types";
@@ -16,7 +17,6 @@ interface Stats {
 
 const STATS_FALLBACK: Stats = { totalRuns: 0, totalDistance: 0, weeklyDistance: 0 };
 
-const GARMIN_FALLBACK: GarminDaysResponse = { days: [] };
 const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
 
 function latestPr(records: PrRecord[]): PrRecord | null {
@@ -33,11 +33,11 @@ export default async function DashboardPage({ searchParams }: Readonly<Dashboard
     searchParams,
     serverFetch<Stats>("/dashboard/stats", STATS_FALLBACK),
     serverFetch<TrainingLoadSummary>("/training/load?days=28", LOAD_FALLBACK),
-    serverFetch<GarminDaysResponse>("/garmin/days?days=7", GARMIN_FALLBACK),
+    serverFetch<GarminDaysResponse>("/garmin/days?days=14", GARMIN_FALLBACK),
     serverFetch<PersonalRecords>("/prs", PRS_FALLBACK),
   ]);
 
-  const latestRestingHr = garmin.days.length > 0 ? garmin.days[garmin.days.length - 1].restingHeartRate : null;
+  const restingHr = latestValue(garmin.days, "restingHeartRate");
   const topPr = latestPr(prs.records);
 
   return (
@@ -79,8 +79,8 @@ export default async function DashboardPage({ searchParams }: Readonly<Dashboard
           <TeaserCard
             href="/recovery"
             label="Resting HR"
-            value={latestRestingHr !== null ? `${latestRestingHr} bpm` : "—"}
-            subtext={latestRestingHr !== null ? "via Garmin" : "Sync Garmin to unlock"}
+            value={restingHr ? `${restingHr.value} bpm` : "—"}
+            subtext={restingHr ? `via Garmin · ${formatDate(restingHr.day)}` : "Sync Garmin to unlock"}
           />
           <TeaserCard
             href="/prs"
