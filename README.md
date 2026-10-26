@@ -111,7 +111,11 @@ written proposal:
    fortnight), but separate fitness and fatigue components aren't identifiable, and
    part of the link is reverse causation.
 2. [Bottleneck identifier](research/proposals/02-bottleneck-identifier.md): which part
-   of fitness most limits performance for a target event.
+   of fitness most limits performance, ranked for 10K to backyard ultra.
+   **[Findings](research/findings/02-bottleneck-identifier.md):** load management and
+   consistency ranks first for every event, robust to every threshold and to race weeks,
+   and matching the athlete's pre-registered guess. Its blind spot is race-pace
+   durability.
 
 ## Future additions
 

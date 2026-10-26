@@ -1,7 +1,19 @@
 # Proposal 2: Bottleneck identifier
 
+**Status: complete.** Findings: [findings/02-bottleneck-identifier.md](../findings/02-bottleneck-identifier.md)
+
 > **Question:** Which part of my fitness is most limiting my performance right now,
 > relative to the event I'm training for?
+
+## Decisions and pre-registration (26 Oct 2026, before any analysis)
+
+- **Target event:** limiters are ranked for **several events side by side** (10K, half
+  marathon, marathon, backyard ultra) in the research notebooks. No "focus event"
+  setting is added to the app.
+- **Athlete's pre-registered belief:** asked "which is your biggest limiter right now
+  for your main road goal?" before seeing any result, the athlete answered **load
+  management** (spikes, inconsistency and breaks interrupting training). The findings
+  compare this with what the data says.
 
 ## Motivation
 
@@ -93,7 +105,7 @@ The data audit decides two things:
   not, that limiter is reported as "unknown"
 - whether the Riegel fit has enough distinct distances to be stable
 
-## Open decision: the target event
+## Target event (decided above; options considered)
 
 A bottleneck only exists relative to an event. Options:
 

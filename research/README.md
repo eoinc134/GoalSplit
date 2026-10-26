@@ -13,7 +13,7 @@ the findings.
 | # | Question | Status |
 |---|---|---|
 | 1 | [Training load vs performance](proposals/01-training-load-vs-performance.md): does my training load predict my performance, and on what timescale? | **Done**: [findings](findings/01-training-load-vs-performance.md) |
-| 2 | [Bottleneck identifier](proposals/02-bottleneck-identifier.md): which part of my fitness is limiting performance right now? | Proposed |
+| 2 | [Bottleneck identifier](proposals/02-bottleneck-identifier.md): which part of my fitness is limiting performance right now? | **Done**: [findings](findings/02-bottleneck-identifier.md) |
 
 Both start from the same **data audit** (step 0 below), which settles what's
 feasible before either is chosen.
