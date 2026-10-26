@@ -41,12 +41,19 @@ a per-run breakdown.
 
 ![Durability by duration, aerobic decoupling chart and long-run table](docs/images/long-runs.png)
 
-**Dashboard and recovery:** headline stats, recent activities, and Garmin resting HR
-and sleep.
+**Recovery:** a transparent readiness score, and resting HR against a personal
+28-day baseline, with elevated mornings flagged.
 
-| Dashboard | Recovery |
-|---|---|
-| ![Dashboard with totals, fitness, resting HR and latest PR](docs/images/dashboard.png) | ![Recovery page with resting heart rate and sleep duration](docs/images/recovery.png) |
+![Readiness score with its components, recovery stat cards and resting heart rate against its baseline](docs/images/recovery.png)
+
+How the next morning responds to rest, easy, moderate and hard days, plus sleep
+stages, Body Battery charge and drain, and stress.
+
+![Next-morning response table, sleep stages, Body Battery and stress charts](docs/images/recovery-2.png)
+
+**Dashboard:** headline stats, fitness and recent activities.
+
+![Dashboard with totals, fitness, resting HR and latest PR](docs/images/dashboard.png)
 
 ## Key terms
 
