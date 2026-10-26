@@ -93,7 +93,7 @@ export function toGarminDayPoints(
   const dailyByDay = new Map(dailies.map((d) => [d.calendarDate, d]));
 
   const points: GarminDayPoint[] = [];
-  for (const day of [...days].sort()) {
+  for (const day of [...days].sort((a, b) => a.localeCompare(b))) {
     const d = dailyByDay.get(day);
     const wellness = d?.includesWellnessData ? d : undefined; // watch not worn → no wellness numbers
     const sleepSeconds = sleepByDay.get(day)?.sleepTimeSeconds;
