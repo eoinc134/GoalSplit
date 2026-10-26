@@ -184,5 +184,42 @@ export async function initSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_garmin_days_user_day ON garmin_days (user_id, day DESC)
   `;
 
+  // Recovery detail from the Garmin Personal API (sleep stages and timing,
+  // Body Battery charge/drain, time in each stress band). mapping_version
+  // records which derivation produced the row; rows from an older one trigger
+  // a full re-sync (see defaultSyncRange in services/garmin-api.service.ts).
+  await sql`
+    ALTER TABLE garmin_days
+      ADD COLUMN IF NOT EXISTS deep_sleep_seconds    INTEGER,
+      ADD COLUMN IF NOT EXISTS light_sleep_seconds   INTEGER,
+      ADD COLUMN IF NOT EXISTS rem_sleep_seconds     INTEGER,
+      ADD COLUMN IF NOT EXISTS awake_sleep_seconds   INTEGER,
+      ADD COLUMN IF NOT EXISTS sleep_start_local     TEXT,
+      ADD COLUMN IF NOT EXISTS sleep_end_local       TEXT,
+      ADD COLUMN IF NOT EXISTS sleep_respiration_avg DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS body_battery_charged  INTEGER,
+      ADD COLUMN IF NOT EXISTS body_battery_drained  INTEGER,
+      ADD COLUMN IF NOT EXISTS stress_rest_seconds   INTEGER,
+      ADD COLUMN IF NOT EXISTS stress_low_seconds    INTEGER,
+      ADD COLUMN IF NOT EXISTS stress_medium_seconds INTEGER,
+      ADD COLUMN IF NOT EXISTS stress_high_seconds   INTEGER,
+      ADD COLUMN IF NOT EXISTS mapping_version       INTEGER
+  `;
+
+  // Latest raw Garmin payload per (day, source) — the Garmin counterpart of
+  // activity_dumps. New metrics can then be derived from stored payloads
+  // instead of re-fetching history. Upserted, not appended: Garmin revises
+  // recent days as the watch uploads, and only the latest version matters.
+  await sql`
+    CREATE TABLE IF NOT EXISTS garmin_dumps (
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day        DATE NOT NULL,
+      source     TEXT NOT NULL CHECK (source IN ('daily', 'sleep', 'hrv')),
+      payload    JSONB NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, day, source)
+    )
+  `;
+
   console.log("DB schema ready");
 }

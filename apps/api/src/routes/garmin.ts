@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
-import { toGarminDayPoint, type GarminDayRow } from "../lib/garmin.js";
 import { addDaysUtc } from "../lib/dates.js";
 import { getCurrentUserId } from "../services/user.service.js";
 import { defaultSyncRange, garminConfigured, syncGarmin } from "../services/garmin-api.service.js";
+import { getRecoverySummary, loadGarminDays } from "../services/recovery.service.js";
 
 export const garminRouter = Router();
 
@@ -52,15 +52,7 @@ garminRouter.get("/days", async (req, res) => {
   const userId = await getCurrentUserId();
   if (!userId) return res.json({ data: { days: [], latestDay: null, lastSyncedAt: null } });
 
-  const rows = await sql<GarminDayRow[]>`
-    SELECT day::text AS metric_date, resting_heart_rate, max_heart_rate, min_heart_rate, average_heart_rate,
-           avg_stress_level, max_stress_level, body_battery_high, body_battery_low,
-           sleep_duration_hours, training_readiness_score, training_readiness_level,
-           hrv_last_night_avg, hrv_status, total_steps
-    FROM garmin_days
-    WHERE user_id = ${userId} AND day >= CURRENT_DATE - (${days - 1} || ' days')::INTERVAL
-    ORDER BY day
-  `;
+  const garminDays = await loadGarminDays(userId, days);
 
   const [freshness] = await sql<{ latest_day: string | null; last_synced_at: Date | null }[]>`
     SELECT MAX(day)::text AS latest_day, MAX(synced_at) AS last_synced_at FROM garmin_days WHERE user_id = ${userId}
@@ -68,9 +60,18 @@ garminRouter.get("/days", async (req, res) => {
 
   return res.json({
     data: {
-      days: rows.map(toGarminDayPoint),
+      days: garminDays,
       latestDay: freshness?.latest_day ?? null,
       lastSyncedAt: freshness?.last_synced_at ? new Date(freshness.last_synced_at).toISOString() : null,
     },
   });
+});
+
+// Recovery analysis: resting HR against your own baseline, bedtime
+// consistency, next-morning response to training, and a readiness score.
+garminRouter.get("/recovery", async (req, res) => {
+  const days = Math.min(Math.max(positiveInt(req.query.days) ?? 90, 7), 365);
+  const userId = await getCurrentUserId();
+  if (!userId) return res.json({ data: { restingHr: [], bedtime: null, nextMorning: [], readiness: null } });
+  return res.json({ data: await getRecoverySummary(userId, days) });
 });

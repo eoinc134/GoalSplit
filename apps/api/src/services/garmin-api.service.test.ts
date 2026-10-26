@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../db/index.js", () => ({
-  sql: vi.fn().mockResolvedValue([]),
+  sql: Object.assign(vi.fn().mockResolvedValue([]), { json: vi.fn((v: unknown) => v) }),
   initSchema: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -76,10 +76,13 @@ describe("Garmin Personal API service", () => {
     await expect(fetchGarminDays("2026-10-20", "2026-10-20")).rejects.toThrow("GARMIN_NOT_CONFIGURED");
   });
 
-  it("upserts one row per day", async () => {
+  it("stores each raw payload, then upserts one row per day", async () => {
     const result = await syncGarmin("user-1", "2026-10-20", "2026-10-21");
     expect(result).toEqual({ synced: 1 });
-    expect(mockSql).toHaveBeenCalledTimes(1);
+    // One daily + one sleep payload (HRV returned 204), then one garmin_days row.
+    const statements = mockSql.mock.calls.map(([strings]) => (strings as string[]).join("?"));
+    expect(statements.filter((q) => q.includes("INSERT INTO garmin_dumps"))).toHaveLength(2);
+    expect(statements.filter((q) => q.includes("INSERT INTO garmin_days"))).toHaveLength(1);
   });
 });
 

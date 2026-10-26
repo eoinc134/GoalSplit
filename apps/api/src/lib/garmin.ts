@@ -17,11 +17,24 @@ export interface GarminDayRow {
   hrv_last_night_avg: number | null;
   hrv_status: string | null;
   total_steps: number | null;
+  deep_sleep_seconds: number | null;
+  light_sleep_seconds: number | null;
+  rem_sleep_seconds: number | null;
+  awake_sleep_seconds: number | null;
+  sleep_start_local: string | null;
+  sleep_end_local: string | null;
+  sleep_respiration_avg: number | null;
+  body_battery_charged: number | null;
+  body_battery_drained: number | null;
+  stress_rest_seconds: number | null;
+  stress_low_seconds: number | null;
+  stress_medium_seconds: number | null;
+  stress_high_seconds: number | null;
 }
 
+
 // snake_case (database columns) -> camelCase (this app's wire format).
-// SQLite returns null for any metric that hasn't gathered enough data yet
-// (e.g. a day without an HRV reading) — passed through as-is, never defaulted.
+// Missing metrics (e.g. a night without sleep data) stay null — never defaulted.
 export function toGarminDayPoint(row: GarminDayRow): GarminDayPoint {
   return {
     day: row.metric_date,
@@ -39,5 +52,18 @@ export function toGarminDayPoint(row: GarminDayRow): GarminDayPoint {
     hrvLastNightAvg: row.hrv_last_night_avg,
     hrvStatus: row.hrv_status,
     totalSteps: row.total_steps,
+    deepSleepSeconds: row.deep_sleep_seconds,
+    lightSleepSeconds: row.light_sleep_seconds,
+    remSleepSeconds: row.rem_sleep_seconds,
+    awakeSleepSeconds: row.awake_sleep_seconds,
+    sleepStartLocal: row.sleep_start_local,
+    sleepEndLocal: row.sleep_end_local,
+    sleepRespirationAvg: row.sleep_respiration_avg,
+    bodyBatteryCharged: row.body_battery_charged,
+    bodyBatteryDrained: row.body_battery_drained,
+    stressRestSeconds: row.stress_rest_seconds,
+    stressLowSeconds: row.stress_low_seconds,
+    stressMediumSeconds: row.stress_medium_seconds,
+    stressHighSeconds: row.stress_high_seconds,
   };
 }

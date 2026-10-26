@@ -68,6 +68,53 @@ describe("toGarminDayPoints", () => {
     expect(p.averageHeartRate).toBeNull();
   });
 
+  it("maps sleep stages and local times, Body Battery charge/drain, and stress-band minutes", () => {
+    const [p] = toGarminDayPoints(
+      [
+        day({
+          bodyBattery: { minValue: 37, maxValue: 100, chargedValue: 50, drainedValue: 65 },
+          stress: {
+            avgLevel: 15,
+            totalDurationInMillis: 86_280_000,
+            restDurationInMillis: 61_920_000,
+            lowStressDurationInMillis: 4_920_000,
+            mediumStressDurationInMillis: 1_020_000,
+            highStressDurationInMillis: 600_000,
+          },
+        }),
+      ],
+      [
+        {
+          calendarDate: "2026-10-20",
+          sleepTimeSeconds: 28_680,
+          deepSleepSeconds: 0,
+          lightSleepSeconds: 15_480,
+          remSleepSeconds: 13_200,
+          awakeSleepSeconds: 120,
+          // 2026-10-19T23:17 and 2026-10-20T07:55 local, encoded as if UTC
+          sleepStartTimestampLocal: Date.UTC(2026, 9, 19, 23, 17),
+          sleepEndTimestampLocal: Date.UTC(2026, 9, 20, 7, 55),
+          averageRespirationValue: 15,
+        },
+      ],
+    );
+    expect(p).toMatchObject({
+      deepSleepSeconds: 0, // a real zero, not missing
+      lightSleepSeconds: 15_480,
+      remSleepSeconds: 13_200,
+      awakeSleepSeconds: 120,
+      sleepStartLocal: "2026-10-19T23:17",
+      sleepEndLocal: "2026-10-20T07:55",
+      sleepRespirationAvg: 15,
+      bodyBatteryCharged: 50,
+      bodyBatteryDrained: 65,
+      stressRestSeconds: 61_920,
+      stressLowSeconds: 4_920,
+      stressMediumSeconds: 1_020,
+      stressHighSeconds: 600,
+    });
+  });
+
   it("treats Garmin's negative 'not enough data' stress values as missing", () => {
     const [p] = toGarminDayPoints([day({ stress: { avgLevel: -1, maxLevel: -2, totalDurationInMillis: 86_000_000 } })], []);
     expect(p.avgStressLevel).toBeNull();

@@ -25,7 +25,7 @@ Every metric is defined, with its formula, assumptions and references, in
 | Aerobic fitness | Efficiency factor trend; grade-adjusted pace inside Z2 | Friel EF; Minetti (2002) GAP |
 | Durability | Decoupling, pace fade and HR rise on long runs, binned by duration | Friel Pa:HR |
 | Change detection | Training phases from weekly load; sustained shifts in efficiency and Z2 pace | Penalised mean-shift segmentation (optimal partitioning / PELT) |
-| Recovery | Resting HR, HRV, sleep, Garmin training readiness | Garmin |
+| Recovery | Resting HR against a personal baseline, sleep stages and timing, Body Battery, stress; next-morning response to hard days; a transparent readiness score | Garmin Personal API |
 | Records | Best efforts per distance, Strava-derived plus manual corrections | — |
 | Race predictions | 5K–marathon times from recent road races, adjusted by the athlete's own record at each distance, with backtested error | Daniels VDOT (1979) |
 

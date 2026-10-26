@@ -9,6 +9,9 @@ import { addDaysUtc, daysBetween } from "./dates.js";
 export const GARMIN_API_BASE = "https://personal.connectapi.garmin.com";
 export const TOKEN_PATH = "/personalapitoken-service/personal-api/personal-api-key/token";
 export const DAILY_CHUNK_DAYS = 90;
+// Bump when the mapping below changes: rows from an older version trigger one
+// full re-sync, which re-derives every stored day.
+export const GARMIN_MAPPING_VERSION = 2;
 export const SLEEP_CHUNK_DAYS = 28;
 
 // [start, end] date pairs (inclusive) covering the range in chunks.
@@ -43,13 +46,28 @@ export interface GarminDailySummary {
   includesWellnessData?: boolean;
   movement?: { steps?: { value?: number } };
   heartRate?: { minValue?: number; maxValue?: number; restingValue?: number };
-  stress?: { avgLevel?: number; maxLevel?: number; totalDurationInMillis?: number };
-  bodyBattery?: { minValue?: number; maxValue?: number };
+  stress?: {
+    avgLevel?: number;
+    maxLevel?: number;
+    totalDurationInMillis?: number;
+    restDurationInMillis?: number;
+    lowStressDurationInMillis?: number;
+    mediumStressDurationInMillis?: number;
+    highStressDurationInMillis?: number;
+  };
+  bodyBattery?: { minValue?: number; maxValue?: number; chargedValue?: number; drainedValue?: number };
 }
 
 export interface GarminSleepSummary {
-  calendarDate: string;
+  calendarDate: string; // the morning the night ended
   sleepTimeSeconds?: number | null;
+  deepSleepSeconds?: number | null;
+  lightSleepSeconds?: number | null;
+  remSleepSeconds?: number | null;
+  awakeSleepSeconds?: number | null;
+  sleepStartTimestampLocal?: number | null; // local wall-clock time, encoded as epoch ms
+  sleepEndTimestampLocal?: number | null;
+  averageRespirationValue?: number | null;
 }
 
 export interface GarminHrvSummary {
@@ -82,6 +100,15 @@ function nonNegative(v: number | undefined | null): number | null {
   return typeof v === "number" && v >= 0 ? v : null;
 }
 
+function millisToSeconds(v: number | undefined): number | null {
+  return typeof v === "number" && v >= 0 ? Math.round(v / 1000) : null;
+}
+
+// Garmin encodes local wall-clock times as epoch milliseconds read as UTC.
+function localTime(ms: number | null | undefined): string | null {
+  return typeof ms === "number" ? new Date(ms).toISOString().slice(0, 16) : null;
+}
+
 export function toGarminDayPoints(
   dailies: GarminDailySummary[],
   sleeps: GarminSleepSummary[],
@@ -96,7 +123,9 @@ export function toGarminDayPoints(
   for (const day of [...days].sort((a, b) => a.localeCompare(b))) {
     const d = dailyByDay.get(day);
     const wellness = d?.includesWellnessData ? d : undefined; // watch not worn → no wellness numbers
-    const sleepSeconds = sleepByDay.get(day)?.sleepTimeSeconds;
+    const sleep = sleepByDay.get(day);
+    const sleepSeconds = sleep?.sleepTimeSeconds;
+    const slept = typeof sleepSeconds === "number" && sleepSeconds > 0;
     const hrv = hrvByDay.get(day);
     const point: GarminDayPoint = {
       day,
@@ -108,12 +137,25 @@ export function toGarminDayPoints(
       maxStressLevel: nonNegative(wellness?.stress?.maxLevel),
       bodyBatteryHigh: nonNegative(wellness?.bodyBattery?.maxValue),
       bodyBatteryLow: nonNegative(wellness?.bodyBattery?.minValue),
-      sleepDurationHours: typeof sleepSeconds === "number" && sleepSeconds > 0 ? sleepSeconds / 3600 : null,
+      sleepDurationHours: slept ? sleepSeconds / 3600 : null,
       trainingReadinessScore: null, // not in the Personal API's documented endpoints
       trainingReadinessLevel: null,
       hrvLastNightAvg: nonNegative(hrv?.lastNightAvg),
       hrvStatus: hrv?.status ?? null,
       totalSteps: nonNegative(wellness?.movement?.steps?.value),
+      deepSleepSeconds: slept ? nonNegative(sleep?.deepSleepSeconds) : null,
+      lightSleepSeconds: slept ? nonNegative(sleep?.lightSleepSeconds) : null,
+      remSleepSeconds: slept ? nonNegative(sleep?.remSleepSeconds) : null,
+      awakeSleepSeconds: slept ? nonNegative(sleep?.awakeSleepSeconds) : null,
+      sleepStartLocal: slept ? localTime(sleep?.sleepStartTimestampLocal) : null,
+      sleepEndLocal: slept ? localTime(sleep?.sleepEndTimestampLocal) : null,
+      sleepRespirationAvg: slept ? nonNegative(sleep?.averageRespirationValue) : null,
+      bodyBatteryCharged: nonNegative(wellness?.bodyBattery?.chargedValue),
+      bodyBatteryDrained: nonNegative(wellness?.bodyBattery?.drainedValue),
+      stressRestSeconds: millisToSeconds(wellness?.stress?.restDurationInMillis),
+      stressLowSeconds: millisToSeconds(wellness?.stress?.lowStressDurationInMillis),
+      stressMediumSeconds: millisToSeconds(wellness?.stress?.mediumStressDurationInMillis),
+      stressHighSeconds: millisToSeconds(wellness?.stress?.highStressDurationInMillis),
     };
     const hasAny = Object.entries(point).some(([k, v]) => k !== "day" && v !== null);
     if (hasAny) points.push(point);

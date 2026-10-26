@@ -29,6 +29,29 @@ export const INTENSITY = {
   high: "#db2777", // pink-600
 } as const;
 
+// Recovery palettes, each validated on the card surface (dataviz validator):
+// sleep stages and Body Battery pass outright; stress bands sit in the CVD warn
+// band, so their chart always carries a legend, tooltips and 2px gaps.
+export const SLEEP_STAGES = {
+  deep: "#7c3aed", // violet-600
+  rem: "#d946ef", // fuchsia-500
+  light: "#0284c7", // sky-600
+  awake: "#737373", // neutral-500 — not a sleep stage, so no hue
+  unstaged: "#525252", // neutral-600 — older nights with a total but no stages
+} as const;
+
+export const STRESS_BANDS = {
+  rest: "#0284c7", // sky-600
+  low: "#059669", // emerald-600
+  medium: "#d97706", // amber-600
+  high: "#db2777", // pink-600
+} as const;
+
+export const BODY_BATTERY = {
+  charged: "#0284c7", // sky-600
+  drained: "#d97706", // amber-600
+} as const;
+
 export function formatDayTick(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-IE", { day: "numeric", month: "short" });
 }

@@ -453,12 +453,84 @@ export interface GarminDayPoint {
   hrvLastNightAvg: number | null;
   hrvStatus: string | null;
   totalSteps: number | null;
+  deepSleepSeconds: number | null;
+  lightSleepSeconds: number | null;
+  remSleepSeconds: number | null;
+  awakeSleepSeconds: number | null;
+  sleepStartLocal: string | null; // "YYYY-MM-DDTHH:MM", local wall-clock time
+  sleepEndLocal: string | null;
+  sleepRespirationAvg: number | null; // breaths per minute
+  bodyBatteryCharged: number | null;
+  bodyBatteryDrained: number | null;
+  stressRestSeconds: number | null;
+  stressLowSeconds: number | null;
+  stressMediumSeconds: number | null;
+  stressHighSeconds: number | null;
 }
 
 export interface GarminDaysResponse {
   days: GarminDayPoint[]; // oldest first
   latestDay: string | null; // newest day Garmin has data for, across all history
   lastSyncedAt: string | null; // ISO 8601 — when garmin_days was last written
+}
+
+// ── Recovery analysis ────────────────────────────────────────────────────────
+// Derived from garmin_days plus training load (see apps/api/src/lib/recovery.ts).
+
+export interface RestingHrBaselinePoint {
+  day: string;
+  restingHr: number;
+  baseline: number | null; // mean of the previous 28 days' resting HR; null under 7 values
+  bandLow: number | null; // baseline ± 1 SD
+  bandHigh: number | null;
+  deviation: number | null; // restingHr − baseline
+  elevated: boolean; // more than 2 SD and at least 3 bpm above baseline
+}
+
+export interface BedtimeConsistency {
+  nights: number; // nights with sleep timing in the last 28 days
+  meanBedtime: string; // "HH:MM"
+  meanWake: string;
+  sdMinutes: number; // bedtime spread
+}
+
+export interface MeanWithCi {
+  mean: number;
+  ciLow: number; // 95% interval (normal approximation)
+  ciHigh: number;
+  n: number;
+}
+
+export interface NextMorningGroup {
+  group: "rest" | "easy" | "moderate" | "hard";
+  loadRange: [number, number]; // TRIMP range of the days in this group
+  days: number;
+  restingHrDeviation: MeanWithCi | null; // bpm vs baseline, the next morning
+  sleepHours: MeanWithCi | null; // the night that followed
+  bodyBatteryHigh: MeanWithCi | null; // next day's Body Battery peak
+}
+
+export interface ReadinessComponent {
+  key: "restingHr" | "sleep" | "bodyBattery" | "form";
+  label: string;
+  value: number;
+  baseline: number;
+  unit: string;
+  z: number; // standardised so that positive = better recovered than usual
+}
+
+export interface Readiness {
+  day: string; // the morning it describes
+  score: number; // 0–100, 50 = your normal
+  label: "Above your normal" | "Normal" | "Below your normal";
+  components: ReadinessComponent[];
+}
+
+export interface RecoverySummary {
+  restingHr: RestingHrBaselinePoint[]; // display window, oldest first
+  bedtime: BedtimeConsistency | null;
+  nextMorning: NextMorningGroup[];
+  readiness: Readiness | null;
 }
 
 export interface GarminSyncResult {

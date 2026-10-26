@@ -1,8 +1,10 @@
+import type postgres from "postgres";
 import type { GarminDayPoint, GarminSyncResult } from "@goalsplit/types";
 import { sql } from "../db/index.js";
 import { addDaysUtc } from "../lib/dates.js";
 import {
   DAILY_CHUNK_DAYS,
+  GARMIN_MAPPING_VERSION,
   GARMIN_API_BASE,
   SLEEP_CHUNK_DAYS,
   TOKEN_PATH,
@@ -58,7 +60,13 @@ async function get<T>(path: string): Promise<T | null> {
   return (await res.json()) as T;
 }
 
-export async function fetchGarminDays(start: string, end: string): Promise<GarminDayPoint[]> {
+export interface GarminRawPayloads {
+  daily: GarminDailySummary[];
+  sleep: GarminSleepSummary[];
+  hrv: GarminHrvSummary[];
+}
+
+export async function fetchGarminPayloads(start: string, end: string): Promise<GarminRawPayloads> {
   const dailies: GarminDailySummary[] = [];
   for (const [from, to] of dateChunks(start, end, DAILY_CHUNK_DAYS)) {
     const body = await get<{ data?: GarminDailySummary[] }>(
@@ -80,7 +88,29 @@ export async function fetchGarminDays(start: string, end: string): Promise<Garmi
     hrvs.push(...(Array.isArray(hrv?.hrvSummaries) ? hrv.hrvSummaries : []));
   }
 
-  return toGarminDayPoints(dailies, sleeps, hrvs);
+  return { daily: dailies, sleep: sleeps, hrv: hrvs };
+}
+
+export async function fetchGarminDays(start: string, end: string): Promise<GarminDayPoint[]> {
+  const raw = await fetchGarminPayloads(start, end);
+  return toGarminDayPoints(raw.daily, raw.sleep, raw.hrv);
+}
+
+// Latest raw payload per (day, source), so new metrics can be derived later
+// without re-fetching history from Garmin.
+export async function upsertGarminDumps(userId: string, raw: GarminRawPayloads): Promise<void> {
+  const rows: { day: string; source: "daily" | "sleep" | "hrv"; payload: unknown }[] = [
+    ...raw.daily.map((p) => ({ day: p.calendarDate, source: "daily" as const, payload: p })),
+    ...raw.sleep.map((p) => ({ day: p.calendarDate, source: "sleep" as const, payload: p })),
+    ...raw.hrv.map((p) => ({ day: p.calendarDate, source: "hrv" as const, payload: p })),
+  ];
+  for (const r of rows) {
+    await sql`
+      INSERT INTO garmin_dumps (user_id, day, source, payload, fetched_at)
+      VALUES (${userId}, ${r.day}, ${r.source}, ${sql.json(r.payload as postgres.JSONValue)}, NOW())
+      ON CONFLICT (user_id, day, source) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = NOW()
+    `;
+  }
 }
 
 export async function upsertGarminDays(userId: string, points: GarminDayPoint[]): Promise<void> {
@@ -90,13 +120,23 @@ export async function upsertGarminDays(userId: string, points: GarminDayPoint[])
         id, user_id, day, resting_heart_rate, max_heart_rate, min_heart_rate, average_heart_rate,
         avg_stress_level, max_stress_level, body_battery_high, body_battery_low,
         sleep_duration_hours, training_readiness_score, training_readiness_level,
-        hrv_last_night_avg, hrv_status, total_steps
+        hrv_last_night_avg, hrv_status, total_steps,
+        deep_sleep_seconds, light_sleep_seconds, rem_sleep_seconds, awake_sleep_seconds,
+        sleep_start_local, sleep_end_local, sleep_respiration_avg,
+        body_battery_charged, body_battery_drained,
+        stress_rest_seconds, stress_low_seconds, stress_medium_seconds, stress_high_seconds,
+        mapping_version
       ) VALUES (
         ${crypto.randomUUID()}, ${userId}, ${p.day}, ${p.restingHeartRate}, ${p.maxHeartRate},
         ${p.minHeartRate}, ${p.averageHeartRate}, ${p.avgStressLevel}, ${p.maxStressLevel},
         ${p.bodyBatteryHigh}, ${p.bodyBatteryLow}, ${p.sleepDurationHours},
         ${p.trainingReadinessScore}, ${p.trainingReadinessLevel}, ${p.hrvLastNightAvg},
-        ${p.hrvStatus}, ${p.totalSteps}
+        ${p.hrvStatus}, ${p.totalSteps},
+        ${p.deepSleepSeconds}, ${p.lightSleepSeconds}, ${p.remSleepSeconds}, ${p.awakeSleepSeconds},
+        ${p.sleepStartLocal}, ${p.sleepEndLocal}, ${p.sleepRespirationAvg},
+        ${p.bodyBatteryCharged}, ${p.bodyBatteryDrained},
+        ${p.stressRestSeconds}, ${p.stressLowSeconds}, ${p.stressMediumSeconds}, ${p.stressHighSeconds},
+        ${GARMIN_MAPPING_VERSION}
       )
       ON CONFLICT (user_id, day) DO UPDATE SET
         resting_heart_rate       = EXCLUDED.resting_heart_rate,
@@ -113,6 +153,20 @@ export async function upsertGarminDays(userId: string, points: GarminDayPoint[])
         hrv_last_night_avg       = EXCLUDED.hrv_last_night_avg,
         hrv_status               = EXCLUDED.hrv_status,
         total_steps              = EXCLUDED.total_steps,
+        deep_sleep_seconds       = EXCLUDED.deep_sleep_seconds,
+        light_sleep_seconds      = EXCLUDED.light_sleep_seconds,
+        rem_sleep_seconds        = EXCLUDED.rem_sleep_seconds,
+        awake_sleep_seconds      = EXCLUDED.awake_sleep_seconds,
+        sleep_start_local        = EXCLUDED.sleep_start_local,
+        sleep_end_local          = EXCLUDED.sleep_end_local,
+        sleep_respiration_avg    = EXCLUDED.sleep_respiration_avg,
+        body_battery_charged     = EXCLUDED.body_battery_charged,
+        body_battery_drained     = EXCLUDED.body_battery_drained,
+        stress_rest_seconds      = EXCLUDED.stress_rest_seconds,
+        stress_low_seconds       = EXCLUDED.stress_low_seconds,
+        stress_medium_seconds    = EXCLUDED.stress_medium_seconds,
+        stress_high_seconds      = EXCLUDED.stress_high_seconds,
+        mapping_version          = EXCLUDED.mapping_version,
         synced_at                = NOW()
     `;
   }
@@ -124,20 +178,24 @@ export async function upsertGarminDays(userId: string, points: GarminDayPoint[])
 const HISTORY_CHECK_DAYS = 60;
 
 // The default range: everything since the first Strava activity when history
-// is missing, otherwise the last week — which also re-reads recent days
-// Garmin may still have been filling in.
+// is missing or was derived by an older GARMIN_MAPPING_VERSION, otherwise the
+// last week — which also re-reads recent days Garmin may still be filling in.
 export async function defaultSyncRange(userId: string, today: string): Promise<{ start: string; end: string }> {
   const cutoff = addDaysUtc(today, -HISTORY_CHECK_DAYS);
-  const [row] = await sql<{ has_history: boolean; first_activity: string | null }[]>`
+  const [row] = await sql<{ has_history: boolean; outdated: boolean; first_activity: string | null }[]>`
     SELECT EXISTS(SELECT 1 FROM garmin_days WHERE user_id = ${userId} AND day < ${cutoff}::date) AS has_history,
+           EXISTS(SELECT 1 FROM garmin_days WHERE user_id = ${userId}
+                    AND (mapping_version IS NULL OR mapping_version < ${GARMIN_MAPPING_VERSION})) AS outdated,
            (SELECT MIN((start_date_local AT TIME ZONE 'UTC')::date)::text FROM activities WHERE user_id = ${userId}) AS first_activity
   `;
-  const backfill = !row.has_history && row.first_activity !== null;
+  const backfill = (!row.has_history || row.outdated) && row.first_activity !== null;
   return { start: backfill ? row.first_activity! : addDaysUtc(today, -6), end: today };
 }
 
 export async function syncGarmin(userId: string, start: string, end: string): Promise<GarminSyncResult> {
-  const points = await fetchGarminDays(start, end);
+  const raw = await fetchGarminPayloads(start, end);
+  const points = toGarminDayPoints(raw.daily, raw.sleep, raw.hrv);
+  await upsertGarminDumps(userId, raw);
   await upsertGarminDays(userId, points);
   return { synced: points.length };
 }

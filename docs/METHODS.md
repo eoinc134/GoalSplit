@@ -15,6 +15,7 @@ end), applied to one athlete's Strava and Garmin data. Implementation lives in
 - [Long runs](#long-runs)
 - [Change-point detection](#change-point-detection)
 - [Race predictions](#race-predictions)
+- [Recovery](#recovery)
 - [Run classification](#run-classification)
 - [Context and confounders](#context-and-confounders)
 - [Known limitations](#known-limitations)
@@ -361,6 +362,51 @@ next to the predictions. The full backtest table is on the page, too.
   are mostly 5K–10K, where pacing falls off normally; it can't see an endurance
   falloff past the half marathon.
 - Marathon adjustments rest on very few races, and the page says so.
+
+## Recovery
+
+Garmin's all-day data (resting HR, sleep, Body Battery, stress) comes from the
+Garmin Personal API. Every recovery measure is judged against the athlete's **own**
+recent history, not population norms.
+
+**Resting HR against baseline.** For each day, the baseline is the mean resting HR of
+the previous 28 days, needing at least 7 values. The normal range is the baseline ± 1
+SD. A morning is flagged **elevated** when it's more than 2 SD *and* at least 3 bpm
+above baseline. The 3 bpm floor stops a very stable baseline from flagging trivial
+wobble. A raised resting HR against your own norm is a well-established early sign of
+accumulated fatigue or oncoming illness.
+
+**Sleep.** Stages (deep, REM, light, awake) and bed and wake times come straight from
+Garmin. Bedtime consistency is the mean and SD of bedtimes over the last 28 nights,
+needing at least 5. Bedtimes are measured from noon, so 23:30 and 00:30 average to
+midnight rather than midday.
+
+**After a hard day.** Training days are ranked by TRIMP and split into equal thirds:
+easy, moderate and hard. Ranking keeps the thirds equal even when many days share a
+load. For each group, plus rest days, the table averages the *next* morning's resting
+HR deviation from baseline, the following night's sleep, and the next day's Body
+Battery peak. Each mean comes with a 95% interval (normal approximation) and its n.
+This is descriptive and observational: hard days also tend to fall on particular
+weekdays and before particular events.
+
+**Readiness score.** A transparent replacement for Garmin's Training Readiness, which
+the Forerunner 55 doesn't compute. For the latest morning with data, up to four
+components are converted to z-scores, with the sign chosen so that positive means
+better recovered than usual:
+
+| Component | Compared with | Direction |
+|---|---|---|
+| Resting HR | its 28-day baseline and SD | lower is better |
+| Last night's sleep | the previous 28 nights (5+ needed) | more is better |
+| Body Battery peak | the previous 28 days (7+ needed) | higher is better |
+| Form (TSB) | the previous 90 days (7+ needed) | higher (fresher) is better |
+
+Each z is clamped to ±3, and the score is `50 + 10 × mean(z)`, clamped to 0–100.
+**50 is a typical day for this athlete.** At 60 or above it reads "Above your normal",
+at 40 or below "Below your normal". It needs at least two components. Every component
+is shown with its value and baseline, so the score can be checked, not just trusted.
+It describes how today compares with your norm; it doesn't prescribe training, and it
+hasn't yet been validated against performance (a candidate for `research/`).
 
 ## Run classification
 
