@@ -116,6 +116,9 @@ written proposal:
    consistency ranks first for every event, robust to every threshold and to race weeks,
    and matching the athlete's pre-registered guess. Its blind spot is race-pace
    durability.
+3. [Before and after the training plan](research/proposals/03-plan-before-after.md): a
+   pre-registered 13-week study of what a consistent plan changes in both questions
+   above. Baseline frozen on 7 Nov 2026, with the follow-up due after 7 Feb 2027.
 
 ## Future additions
 

@@ -14,8 +14,9 @@ the findings.
 |---|---|---|
 | 1 | [Training load vs performance](proposals/01-training-load-vs-performance.md): does my training load predict my performance, and on what timescale? | **Done**: [findings](findings/01-training-load-vs-performance.md) |
 | 2 | [Bottleneck identifier](proposals/02-bottleneck-identifier.md): which part of my fitness is limiting performance right now? | **Done**: [findings](findings/02-bottleneck-identifier.md) |
+| 3 | [Before and after the training plan](proposals/03-plan-before-after.md): what changes in questions 1 and 2 after 13 weeks of a consistent plan? | **Running**: baseline frozen 7 Nov 2026, follow-up after 7 Feb 2027 |
 
-Both start from the same **data audit** (step 0 below), which settles what's
+Proposals 1 and 2 start from the same **data audit** (step 0 below), which settles what's
 feasible before either is chosen.
 
 ### Choosing between them
@@ -45,6 +46,7 @@ research/
   goalsplit_research/
                   shared Python: database access, dataset builders, model code
   findings/       write-ups of finished questions (question → method → results → limitations)
+  baselines/      frozen results a later comparison is judged against; never regenerated
 ```
 
 ## Data access
