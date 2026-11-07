@@ -112,19 +112,22 @@ inconclusive, and that would be reported as such.
 ### Secondary, descriptive only
 
 - **Races:** VDOT, fade and drift for each race, against the frozen race list. Few races
-  and different distances, so no statistics. The fade in a half marathon also addresses
-  Proposal 2's blind spot, race-pace durability.
+  and different distances, so no statistics. The half marathon falls after the window (May
+  2027), so Proposal 2's blind spot, race-pace durability, stays largely untested here.
 - **Z2 pace, median long-run drift, resting HR, sleep and stress,** against Before and
   the same weeks last year. Sleep was rarely recorded before autumn 2026, so last
   year's sleep comparison is unavailable.
 
 ### Athlete's prediction
 
-To be filled in before 9 Nov 2026, like the guess recorded for Proposal 2:
+Recorded 7 Nov 2026, before the study window and before any outcome existed, like the
+guess recorded for Proposal 2:
 
-- What will rank first for a half marathon in February? *(not yet recorded)*
-- Will efficiency visibly improve? *(not yet recorded)*
-- Race goal for the block? *(not yet recorded)*
+- **First for a half marathon in February:** load management.
+- **Efficiency:** a slight real improvement, too small for the study to confirm.
+- **Race goal for the block:** personal bests at 5K and 10K by 7 Feb 2027: under 19:39
+  and under 39:34. The half marathon is in May 2027, after the study, so it isn't part
+  of this test.
 
 ## Threats to validity
 
