@@ -1,9 +1,8 @@
 import type { SyncStatus } from "@goalsplit/types";
-import { serverFetch, API_URL } from "@/lib/api";
+import { serverFetch } from "@/lib/server-api";
 
 export async function StravaConnect() {
   const status = await serverFetch<SyncStatus>("/auth/status", { isConnected: false });
-  const apiUrl = API_URL;
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
@@ -33,13 +32,12 @@ export async function StravaConnect() {
         </div>
 
         {status.isConnected ? (
-          <form action={`${apiUrl}/auth/strava`} method="GET">
-            {/* Disconnect is a DELETE — we'll use a client component for that later */}
-            <span className="text-xs text-neutral-500">Connected</span>
-          </form>
+          <span className="text-xs text-neutral-500">Connected</span>
         ) : (
+          // Plain <a>: a route handler redirecting to Strava, not a page (see login/page.tsx).
+          // eslint-disable-next-line @next/next/no-html-link-for-pages
           <a
-            href={`${apiUrl}/auth/strava`}
+            href="/api/auth/strava"
             className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-400 transition-colors"
           >
             Connect Strava

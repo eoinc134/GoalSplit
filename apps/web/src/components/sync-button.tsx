@@ -14,8 +14,7 @@ export function SyncButton() {
     setErrorMsg(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
-      const res = await fetch(`${apiUrl}/activities/sync${full ? "?full=true" : ""}`, {
+      const res = await fetch(`/api/activities/sync${full ? "?full=true" : ""}`, {
         method: "POST",
       });
       const json = await res.json();

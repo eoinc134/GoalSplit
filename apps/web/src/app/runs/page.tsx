@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SyncButton } from "@/components/sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
-import { API_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/server-api";
 import { ACTIVITY_TYPE_ICON, ACTIVITY_FILTERS } from "@/lib/constants";
 import type { ActivityRow } from "@/lib/types";
 
@@ -14,7 +14,8 @@ async function fetchActivities(type: string, page: number) {
     ...(type ? { type } : {}),
   });
   try {
-    const res = await fetch(`${API_URL}/activities?${params}`, { next: { revalidate: 0 } });
+    const res = await apiFetch(`/activities?${params}`);
+    if (!res.ok) return { data: [], total: 0 };
     return res.json() as Promise<{ data: ActivityRow[]; total: number }>;
   } catch {
     return { data: [], total: 0 };

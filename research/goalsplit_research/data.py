@@ -14,7 +14,7 @@ import pandas as pd
 import requests
 from sqlalchemy import create_engine, text
 
-from .config import DATA_DIR, api_url, database_url
+from .config import DATA_DIR, api_headers, api_url, database_url
 
 
 def fetch_dataset(refresh: bool = False) -> dict:
@@ -25,7 +25,7 @@ def fetch_dataset(refresh: bool = False) -> dict:
     if cache.exists() and not refresh:
         return json.loads(cache.read_text(encoding="utf-8"))
     try:
-        res = requests.get(f"{api_url()}/research/dataset", timeout=120)
+        res = requests.get(f"{api_url()}/research/dataset", headers=api_headers(), timeout=120)
         res.raise_for_status()
     except requests.RequestException as err:
         cached = sorted(DATA_DIR.glob("dataset-*.json"))

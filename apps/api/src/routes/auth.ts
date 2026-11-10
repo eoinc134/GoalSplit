@@ -1,62 +1,76 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
-import { buildAuthUrl, exchangeCode } from "../lib/strava-client.js";
+import { buildAuthUrl, exchangeCode, StravaAuthError } from "../lib/strava-client.js";
+import { authLimiter } from "../middleware/rate-limit.js";
 import { saveToken } from "../services/token.service.js";
+import { getCurrentUserId, isAthleteAllowed } from "../services/user.service.js";
 
+// Strava OAuth, driven by the web app. The browser only ever talks to the web
+// app: it generates the `state` value (kept in a cookie), sends the user to
+// the URL built here, receives Strava's redirect on its own callback, checks
+// `state`, and then posts the code to /exchange. Like every /api route these
+// require the API key, so only the web server can call them.
 export const authRouter = Router();
 
-// Step 1: redirect user to Strava OAuth page
-authRouter.get("/strava", (_req, res) => {
-  res.redirect(buildAuthUrl());
+authRouter.get("/strava/authorize-url", (req, res) => {
+  const { state } = req.query;
+  if (typeof state !== "string" || state.length < 16) {
+    return res.status(400).json({ error: "state is required", statusCode: 400 });
+  }
+  return res.json({ data: { url: buildAuthUrl(state) } });
 });
 
-// Step 2: Strava redirects back here with ?code=...
-authRouter.get("/strava/callback", async (req, res) => {
-  const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
-  const { code, error } = req.query;
-
-  if (error || !code || typeof code !== "string") {
-    return res.redirect(`${frontendUrl}?strava=error&reason=${error ?? "no_code"}`);
+authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
+  const code = (req.body as { code?: unknown } | undefined)?.code;
+  if (typeof code !== "string" || code.length === 0) {
+    return res.status(400).json({ error: "code is required", statusCode: 400 });
   }
 
+  let tokenData;
   try {
-    const tokenData = await exchangeCode(code);
-    const athlete = tokenData.athlete;
-
-    // Upsert user row
-    await sql`
-      INSERT INTO users (id, strava_athlete_id, username, firstname, lastname, profile_url, sex)
-      VALUES (${crypto.randomUUID()}, ${athlete.id}, ${athlete.username ?? null},
-              ${athlete.firstname}, ${athlete.lastname}, ${athlete.profile ?? null},
-              ${athlete.sex === "M" || athlete.sex === "F" ? athlete.sex : null})
-      ON CONFLICT (strava_athlete_id) DO UPDATE SET
-        username    = EXCLUDED.username,
-        firstname   = EXCLUDED.firstname,
-        lastname    = EXCLUDED.lastname,
-        profile_url = EXCLUDED.profile_url,
-        sex         = EXCLUDED.sex
-    `;
-
-    const [user] = await sql<{ id: string }[]>`
-      SELECT id FROM users WHERE strava_athlete_id = ${athlete.id}
-    `;
-
-    await saveToken(user.id, {
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-      expires_at: tokenData.expires_at,
-    });
-
-    return res.redirect(`${frontendUrl}?strava=connected`);
+    tokenData = await exchangeCode(code);
   } catch (err) {
-    console.error("Strava auth error:", err);
-    return res.redirect(`${frontendUrl}?strava=error&reason=token_exchange_failed`);
+    console.error("Strava code exchange failed:", err);
+    const statusCode = err instanceof StravaAuthError ? 400 : 502;
+    return res.status(statusCode).json({ error: "token_exchange_failed", statusCode });
   }
+
+  const athlete = tokenData.athlete;
+  if (!(await isAthleteAllowed(athlete.id))) {
+    console.warn(`Rejected Strava sign-in from athlete ${athlete.id} (not the allowed athlete)`);
+    return res.status(403).json({ error: "athlete_not_allowed", statusCode: 403 });
+  }
+
+  await sql`
+    INSERT INTO users (id, strava_athlete_id, username, firstname, lastname, profile_url, sex)
+    VALUES (${crypto.randomUUID()}, ${athlete.id}, ${athlete.username ?? null},
+            ${athlete.firstname}, ${athlete.lastname}, ${athlete.profile ?? null},
+            ${athlete.sex === "M" || athlete.sex === "F" ? athlete.sex : null})
+    ON CONFLICT (strava_athlete_id) DO UPDATE SET
+      username    = EXCLUDED.username,
+      firstname   = EXCLUDED.firstname,
+      lastname    = EXCLUDED.lastname,
+      profile_url = EXCLUDED.profile_url,
+      sex         = EXCLUDED.sex
+  `;
+
+  const [user] = await sql<{ id: string }[]>`
+    SELECT id FROM users WHERE strava_athlete_id = ${athlete.id}
+  `;
+
+  await saveToken(user.id, {
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    expires_at: tokenData.expires_at,
+  });
+
+  return res.json({ data: { athleteId: athlete.id } });
 });
 
-// Connection status — used by the frontend to show athlete info / connect button
+// Connection status — used by the frontend to show athlete info
 authRouter.get("/status", async (_req, res) => {
-  const [row] = await sql<{
+  const userId = await getCurrentUserId();
+  const [row] = userId === null ? [] : await sql<{
     id: string;
     username: string;
     firstname: string;
@@ -70,7 +84,7 @@ authRouter.get("/status", async (_req, res) => {
            t.expires_at, t.updated_at
     FROM users u
     JOIN strava_tokens t ON t.user_id = u.id
-    LIMIT 1
+    WHERE u.id = ${userId}
   `;
 
   if (!row) {
@@ -94,9 +108,10 @@ authRouter.get("/status", async (_req, res) => {
   });
 });
 
-// Disconnect — removes tokens and user data
+// Disconnect — removes the current user's tokens and data (CASCADE handles
+// strava_tokens, activities and everything hanging off them).
 authRouter.delete("/strava", async (_req, res) => {
-  // CASCADE handles strava_tokens and activities
-  await sql`DELETE FROM users`;
+  const userId = await getCurrentUserId();
+  if (userId) await sql`DELETE FROM users WHERE id = ${userId}`;
   return res.json({ data: { disconnected: true } });
 });

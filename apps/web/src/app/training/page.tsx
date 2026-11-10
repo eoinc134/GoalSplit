@@ -10,7 +10,7 @@ import { EfficiencyChart, PaceAtHrChart } from "@/components/efficiency-charts";
 import { DurabilityTable, LongRunsTable } from "@/components/long-runs-table";
 import { ChangeList, PhasesTable } from "@/components/change-points";
 import { StreamsBackfillPrompt } from "@/components/streams-backfill-prompt";
-import { serverFetch } from "@/lib/api";
+import { serverFetch } from "@/lib/server-api";
 import { METHODS_URL } from "@/lib/constants";
 import { formatPace } from "@/lib/format";
 import {

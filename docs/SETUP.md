@@ -16,6 +16,7 @@ Requires Node.js and Docker Desktop (plus Python 3.11+ for `research/` only).
 npm install
 cp .env.example .env                  # Docker Compose variables
 cp apps/api/.env.example apps/api/.env # add Strava credentials and the Garmin API key
+cp apps/web/.env.example apps/web/.env.local
 docker compose up -d                  # Postgres on port 5433; schema is created on API start
 npm run dev                           # web on :3000, API on :3001
 ```
@@ -26,7 +27,8 @@ Other commands: `npm run build`, `npm run test`, `npm run type-check`, `npm run 
 
 1. Create an app at [strava.com/settings/api](https://www.strava.com/settings/api), callback domain `localhost`.
 2. Put `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` and
-   `STRAVA_REDIRECT_URI=http://localhost:3001/api/auth/strava/callback` in `apps/api/.env`.
+   `STRAVA_REDIRECT_URI=http://localhost:3000/api/auth/strava/callback` in `apps/api/.env`.
+   The callback is the **web** app's route: it runs the sign-in flow (see [Security](#security)).
 3. **Connect Strava** on the dashboard, then **Sync Activities**.
 4. Click **Backfill History** on the Activities page to fetch per-second streams for
    older activities. Streams power every HR- and pace-based analysis. Strava allows
@@ -74,11 +76,40 @@ the recent training log. Build it with `npm run build --workspace=@goalsplit/mcp
     "goalsplit-trainer": {
       "command": "node",
       "args": ["C:\\ProjectFiles\\GoalSplit\\apps\\mcp-trainer\\dist\\index.js"],
-      "env": { "GOALSPLIT_API_URL": "http://localhost:3001/api" }
+      "env": { "GOALSPLIT_API_URL": "http://localhost:3001/api", "GOALSPLIT_API_KEY": "" }
     }
   }
 }
 ```
+
+`GOALSPLIT_API_KEY` is only needed when the API it points at has `API_KEY` set. The
+repo's `.mcp.json` reads it from your environment rather than storing it.
+
+## Security
+
+GoalSplit is single-athlete. The pieces:
+
+- **Sign-in:** Strava OAuth, run by the web app. A random `state` value in a
+  short-lived cookie guards against login CSRF. The API only accepts the athlete in
+  `ALLOWED_STRAVA_ATHLETE_ID` (locally, if unset: the first athlete to connect). A
+  successful sign-in sets a signed, HttpOnly, `SameSite=Lax` session cookie that lasts
+  30 days. **Sign out** clears it. Strava stays connected.
+- **Web app as the only door:** `apps/web/src/middleware.ts` requires the session for
+  every page and `/api/*` call. The browser never talks to the API directly. It calls
+  the web app's same-origin `/api/*` proxy, which adds the API key server-side.
+- **API:** every `/api` route requires `API_KEY` (`x-api-key` or `Authorization: Bearer`).
+  Only `/health` is open. The API sends no CORS headers, so browsers can't call it
+  cross-origin at all.
+- **Rate limits** (API, per 15 min): 600 requests overall, 10 syncs (Strava + Garmin),
+  20 OAuth code exchanges.
+- **Strava tokens** are encrypted at rest with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`).
+  Plaintext rows from before encryption are encrypted at startup. Concurrent refreshes
+  share one Strava call. If Strava revokes access, sync says so: sign out and sign in again.
+- **Fail closed:** with `NODE_ENV=production` the API won't start without `API_KEY`,
+  `TOKEN_ENCRYPTION_KEY` and `ALLOWED_STRAVA_ATHLETE_ID`. A production web build
+  without `SESSION_SECRET` refuses every request.
+
+Locally, leaving those variables empty runs everything open, with no sign-in.
 
 ## Deploy (Railway)
 
@@ -86,10 +117,12 @@ Two services from this repo, plus a Postgres add-on.
 
 | Service | Build | Start | Env |
 |---|---|---|---|
-| API | `npm ci && npx turbo build --filter=@goalsplit/api` | `node apps/api/dist/index.js` | `DATABASE_URL`, `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI` (`https://<api>/api/auth/strava/callback`), `FRONTEND_URL`, `GARMIN_API` |
-| Web | `npm ci && npx turbo build --filter=@goalsplit/web` | `npm run start --workspace=apps/web` | `NEXT_PUBLIC_API_URL` (`https://<api>/api`, baked in at build — redeploy after changing) |
+| API | `npm ci && npx turbo build --filter=@goalsplit/api` | `node apps/api/dist/index.js` | `NODE_ENV=production`, `DATABASE_URL`, `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI` (`https://<web>/api/auth/strava/callback`), `GARMIN_API`, `API_KEY`, `TOKEN_ENCRYPTION_KEY`, `ALLOWED_STRAVA_ATHLETE_ID` |
+| Web | `npm ci && npx turbo build --filter=@goalsplit/web` | `npm run start --workspace=apps/web` | `API_URL` (`http://<api>.railway.internal:<PORT>/api`, or the API's public URL), `API_KEY` (same value as the API's), `SESSION_SECRET` |
 
-Set the Strava app's callback domain to the API's Railway domain.
+Set the Strava app's callback domain to the **web** service's Railway domain. Only the web
+app calls the API, so if `API_URL` uses Railway's private network, the API service needs
+no public domain at all. Generate secrets with `openssl rand -hex 32`.
 
 ## API
 

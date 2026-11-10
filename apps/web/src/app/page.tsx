@@ -3,7 +3,7 @@ import { TeaserCard } from "@/components/teaser-card";
 import { BandBadge } from "@/components/band-badge";
 import { StravaConnect } from "@/components/strava-connect";
 import { ActivityList } from "@/components/activity-list";
-import { serverFetch } from "@/lib/api";
+import { serverFetch } from "@/lib/server-api";
 import { GARMIN_FALLBACK, latestValue } from "@/lib/garmin";
 import { LOAD_FALLBACK } from "@/lib/analytics-fallbacks";
 import { formatTime, formatDate } from "@/lib/format";

@@ -1,27 +1,26 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+// Browser-side API client. Calls go to this app's own /api/* proxy (same
+// origin, session cookie attached automatically), never to the API service
+// directly. Server components use lib/server-api.ts instead.
+const BASE = "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
   });
+
+  if (res.status === 401 && path !== "/auth/status") {
+    // Session expired mid-visit — send the user back through sign-in.
+    window.location.href = "/login";
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
-}
-
-export async function serverFetch<T>(path: string, fallback: T): Promise<T> {
-  try {
-    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 0 } });
-    const json = await res.json();
-    return json.data as T;
-  } catch {
-    return fallback;
-  }
 }
 
 export const api = {

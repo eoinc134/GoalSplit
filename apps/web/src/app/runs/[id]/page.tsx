@@ -2,13 +2,13 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { StatCard } from "@/components/stat-card";
 import { RouteMap } from "@/components/route-map";
-import { API_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/server-api";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
 import type { ActivityDetail } from "@/lib/types";
 import type { ActivityRoute } from "@goalsplit/types";
 
 async function fetchActivity(id: string): Promise<ActivityDetail | null> {
-  const res = await fetch(`${API_URL}/activities/${id}`, { next: { revalidate: 0 } });
+  const res = await apiFetch(`/activities/${encodeURIComponent(id)}`);
   if (res.status === 404) return null;
   const { data } = (await res.json()) as { data: ActivityDetail };
   return data;

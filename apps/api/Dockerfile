@@ -18,6 +18,10 @@ RUN npm ci --ignore-scripts && node_modules/.bin/turbo build --filter=@goalsplit
 # unprivileged `node` user.
 USER node
 
+# Set after the build: NODE_ENV=production during `npm ci` would skip the
+# devDependencies the build needs. At runtime it makes the API refuse to start
+# without its secrets (src/lib/security-config.ts).
+ENV NODE_ENV=production
 ENV PORT=3001
 EXPOSE 3001
 CMD ["node", "apps/api/dist/index.js"]

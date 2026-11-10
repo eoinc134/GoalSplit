@@ -2,7 +2,7 @@ import { StatCard } from "@/components/stat-card";
 import { GarminSyncButton } from "@/components/garmin-sync-button";
 import { BodyBatteryChart, RestingHrBaselineChart, SleepStagesChart, StressChart } from "@/components/recovery-charts";
 import { NextMorningTable, ReadinessCard } from "@/components/recovery-insights";
-import { serverFetch } from "@/lib/api";
+import { serverFetch } from "@/lib/server-api";
 import { formatDate } from "@/lib/format";
 import { GARMIN_FALLBACK, latestValue } from "@/lib/garmin";
 import type { GarminDayPoint, GarminDaysResponse, RecoverySummary, RestingHrBaselinePoint } from "@goalsplit/types";

@@ -70,6 +70,23 @@ export const STREAM_KEYS = [
 // rationale as StravaActivityDetail — only present keys are the ones Strava has.
 export type StravaStreamSet = Record<string, unknown>;
 
+// Strava rejected our credentials: a refused refresh token, or a 401 on an
+// API call (access revoked from the athlete's Strava settings). Reconnecting
+// via OAuth is the only fix. Strava's response body is logged, never put in
+// the message, since messages can reach API clients.
+export class StravaAuthError extends Error {
+  constructor(context: string, status: number) {
+    super(`${context}: Strava returned ${status}`);
+    this.name = "StravaAuthError";
+  }
+}
+
+async function failTokenCall(context: string, res: Response): Promise<never> {
+  console.error(`${context} (${res.status}):`, await res.text().catch(() => ""));
+  if (res.status === 400 || res.status === 401) throw new StravaAuthError(context, res.status);
+  throw new Error(`${context}: Strava returned ${res.status}`);
+}
+
 export interface RateLimit {
   fifteenMin: number;
   daily: number;
@@ -89,13 +106,14 @@ function parseRateHeader(header: string | null, defaults: [number, number]): Rat
   };
 }
 
-export function buildAuthUrl(): string {
+export function buildAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.STRAVA_CLIENT_ID!,
     redirect_uri: process.env.STRAVA_REDIRECT_URI!,
     response_type: "code",
     approval_prompt: "auto",
     scope: "read,activity:read_all",
+    state,
   });
   return `https://www.strava.com/oauth/authorize?${params}`;
 }
@@ -111,10 +129,7 @@ export async function exchangeCode(code: string): Promise<StravaTokenResponse> {
       grant_type: "authorization_code",
     }),
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Token exchange failed (${res.status}): ${body}`);
-  }
+  if (!res.ok) return failTokenCall("Token exchange failed", res);
   return res.json() as Promise<StravaTokenResponse>;
 }
 
@@ -129,10 +144,7 @@ export async function refreshToken(refreshToken: string): Promise<StravaRefreshR
       grant_type: "refresh_token",
     }),
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Token refresh failed (${res.status}): ${body}`);
-  }
+  if (!res.ok) return failTokenCall("Token refresh failed", res);
   return res.json() as Promise<StravaRefreshResponse>;
 }
 
@@ -151,6 +163,7 @@ export async function fetchActivities(
   });
 
   if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+  if (res.status === 401) throw new StravaAuthError("Strava API call", 401);
   if (!res.ok) throw new Error(`Strava activities fetch failed: ${res.status}`);
 
   return {
@@ -175,6 +188,7 @@ export async function fetchActivityDetail(
   });
 
   if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+  if (res.status === 401) throw new StravaAuthError("Strava API call", 401);
   if (!res.ok) throw new Error(`Strava activity detail fetch failed: ${res.status}`);
 
   return {
@@ -209,6 +223,7 @@ export async function fetchActivityStreams(
   const limit = parseRateHeader(res.headers.get("X-RateLimit-Limit"), [100, 1000]);
 
   if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+  if (res.status === 401) throw new StravaAuthError("Strava API call", 401);
   if (res.status === 404) return { streams: null, usage, limit };
   if (!res.ok) throw new Error(`Strava streams fetch failed: ${res.status}`);
 

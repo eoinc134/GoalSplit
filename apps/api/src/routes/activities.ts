@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
 import { syncActivities } from "../services/sync.service.js";
+import { STRAVA_REAUTH_REQUIRED } from "../services/token.service.js";
+import { StravaAuthError } from "../lib/strava-client.js";
 import {
   buildTrainingMarkdown,
   buildTrainingSummary,
@@ -160,9 +162,19 @@ activitiesRouter.post("/sync", async (req, res) => {
     }
     return res.json({ data: result });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Sync failed";
-    const statusCode = message === "RATE_LIMIT_EXCEEDED" ? 429 : 500;
-    return res.status(statusCode).json({ error: message, statusCode });
+    const message = err instanceof Error ? err.message : "";
+    if (message === "RATE_LIMIT_EXCEEDED") {
+      return res.status(429).json({ error: "Strava rate limit reached — try again in 15 minutes", statusCode: 429 });
+    }
+    if (message === STRAVA_REAUTH_REQUIRED || err instanceof StravaAuthError) {
+      return res.status(401).json({
+        error: "Strava access was revoked or has expired — sign out and sign in with Strava again",
+        code: STRAVA_REAUTH_REQUIRED,
+        statusCode: 401,
+      });
+    }
+    console.error("Strava sync failed:", err);
+    return res.status(500).json({ error: "Sync failed — see API logs", statusCode: 500 });
   }
 });
 

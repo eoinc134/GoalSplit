@@ -137,7 +137,7 @@ export interface SyncOptions {
 }
 
 export async function syncActivities(userId: string, options: SyncOptions = {}): Promise<SyncResult> {
-  const accessToken = await getValidAccessToken();
+  const accessToken = await getValidAccessToken(userId);
   if (!accessToken) throw new Error("Not connected to Strava");
 
   const lastSynced = options.full ? null : await getLastActivityTimestamp(userId);

@@ -23,6 +23,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <Link href="/training" className="hover:text-neutral-50 transition-colors">Training</Link>
               <Link href="/recovery" className="hover:text-neutral-50 transition-colors">Recovery</Link>
               <Link href="/prs" className="hover:text-neutral-50 transition-colors">Records</Link>
+              <form action="/api/auth/logout" method="POST">
+                <button type="submit" className="hover:text-neutral-50 transition-colors">Sign out</button>
+              </form>
             </div>
           </div>
         </nav>

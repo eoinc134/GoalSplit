@@ -22,3 +22,9 @@ def database_url() -> str:
 
 def api_url() -> str:
     return os.environ.get("GOALSPLIT_API_URL", "http://localhost:3002/api")
+
+
+def api_headers() -> dict[str, str]:
+    """Only needed if the API you run against has API_KEY set."""
+    key = os.environ.get("GOALSPLIT_API_KEY")
+    return {"x-api-key": key} if key else {}

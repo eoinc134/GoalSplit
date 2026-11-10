@@ -3,6 +3,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const API_URL = process.env.GOALSPLIT_API_URL ?? "http://localhost:3001/api";
+// Required once the API has API_KEY set (always, in production). Not needed
+// against a local dev API with no key configured.
+const API_KEY = process.env.GOALSPLIT_API_KEY;
 
 const server = new McpServer({
   name: "goalsplit-trainer",
@@ -37,7 +40,9 @@ server.registerTool(
     if (days) params.set("days", String(days));
     if (type) params.set("type", type);
 
-    const res = await fetch(`${API_URL}/activities/export?${params}`);
+    const res = await fetch(`${API_URL}/activities/export?${params}`, {
+      headers: API_KEY ? { "x-api-key": API_KEY } : {},
+    });
     if (!res.ok) {
       throw new Error(`GoalSplit API request failed: ${res.status} ${await res.text()}`);
     }

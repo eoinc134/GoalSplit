@@ -1,6 +1,6 @@
 import { PrManager } from "@/components/pr-manager";
 import { RacePredictions } from "@/components/race-predictions";
-import { serverFetch } from "@/lib/api";
+import { serverFetch } from "@/lib/server-api";
 import { formatTime, formatDate } from "@/lib/format";
 import type { PersonalRecords, RacePredictionSummary } from "@goalsplit/types";
 import type { ActivityRow } from "@/lib/types";

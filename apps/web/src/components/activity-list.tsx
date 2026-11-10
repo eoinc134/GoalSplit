@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { SyncButton } from "./sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
-import { API_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/server-api";
 import { ACTIVITY_TYPE_ICON } from "@/lib/constants";
 import type { ActivityRow } from "@/lib/types";
 
 async function fetchActivities(): Promise<{ data: ActivityRow[]; total: number }> {
   try {
-    const res = await fetch(`${API_URL}/activities?limit=10`, { next: { revalidate: 0 } });
+    const res = await apiFetch("/activities?limit=10");
+    if (!res.ok) return { data: [], total: 0 };
     return res.json();
   } catch {
     return { data: [], total: 0 };
