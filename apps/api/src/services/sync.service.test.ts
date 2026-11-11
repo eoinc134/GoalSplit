@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../db/index.js", () => ({
   sql: Object.assign(vi.fn(), { json: vi.fn((v: unknown) => v) }),
-  initSchema: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../lib/strava-client.js", async (importOriginal) => ({

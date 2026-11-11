@@ -1,5 +1,5 @@
 import { app } from "./app.js";
-import { initSchema } from "./db/index.js";
+import { runMigrations } from "./db/migrate.js";
 import { log } from "./lib/logger.js";
 import { assertSecurityConfig } from "./lib/security-config.js";
 import { startScheduler } from "./services/scheduler.js";
@@ -11,7 +11,7 @@ const PORT = process.env.PORT ?? 3001;
 
 async function start() {
   assertSecurityConfig();
-  await initSchema();
+  await runMigrations();
 
   const encrypted = await encryptLegacyTokens();
   if (encrypted > 0) log.info("encrypted legacy plaintext Strava tokens", { count: encrypted });

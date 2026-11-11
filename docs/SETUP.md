@@ -17,7 +17,7 @@ npm install
 cp .env.example .env                  # Docker Compose variables
 cp apps/api/.env.example apps/api/.env # add Strava credentials and the Garmin API key
 cp apps/web/.env.example apps/web/.env.local
-docker compose up -d                  # Postgres on port 5433; schema is created on API start
+docker compose up -d                  # Postgres on port 5433; migrations run on API start
 npm run dev                           # web on :3000, API on :3001
 ```
 
@@ -147,6 +147,46 @@ latest run of each, with the reason if it failed or stopped early.
 
 The in-process scheduler and the one-sync-at-a-time lock assume a single API instance.
 Running more than one replica would need a Postgres advisory lock instead.
+
+## Database migrations
+
+The schema lives in [`apps/api/migrations`](../apps/api/migrations) as numbered `.sql`
+files, applied by [node-pg-migrate](https://github.com/salsita/node-pg-migrate) and
+recorded in the `pgmigrations` table. The API applies pending migrations on startup,
+before it listens:
+
+- **One at a time:** an advisory lock means two containers booting together (Railway
+  starts the new one before stopping the old) can't both migrate.
+- **All or nothing:** every pending migration runs in a single transaction. If one
+  fails, the whole batch rolls back and the API refuses to start.
+- **In order:** a new file numbered before one that's already applied (two branches
+  both adding `0010_…`) is refused rather than run out of order.
+
+`0001`–`0007` are the baseline: the schema as it stood when migrations were introduced
+(November 2026), one file per area. On an existing database they change nothing.
+`0008` drops the tables left from the September 2026 pivot (goals, personal bests,
+nutrition, weight), and `0009` drops a redundant index.
+
+```sh
+npm run migrate:create -w apps/api -- add_thing   # → migrations/0010_add-thing.sql
+npm run migrate -w apps/api                       # apply pending (uses apps/api/.env)
+npm run migrate:down -w apps/api                  # undo the latest one
+```
+
+Writing a migration:
+
+- Put the change under `-- Up Migration`, and its undo under `-- Down Migration`.
+  Leave out the Down section when a change can't be undone (dropping a table or
+  data). `migrate:down` then refuses rather than guessing.
+- **Never edit a migration that's been deployed.** Write a new one. The applied
+  record is by name, so edits never reach databases that already ran it.
+- Keep each file to one change, and say *why* in a comment at the top.
+- Mind locks on big tables: adding a nullable column or an index on a small table
+  is instant, but rewriting a column type on `activity_dumps` (15 MB+ of JSON) locks
+  it for the duration.
+
+CI applies every migration to an empty Postgres 18, checks that a second run finds
+nothing to do, and round-trips the newest migration down and up when it's reversible.
 
 ## Deploy (Railway)
 

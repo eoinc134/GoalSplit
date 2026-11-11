@@ -3,7 +3,6 @@ import request from "supertest";
 
 vi.mock("./db/index.js", () => ({
   sql: Object.assign(vi.fn().mockResolvedValue([]), { json: vi.fn((v: unknown) => v) }),
-  initSchema: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { sql } from "./db/index.js";

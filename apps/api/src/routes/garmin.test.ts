@@ -3,7 +3,6 @@ import request from "supertest";
 
 vi.mock("../db/index.js", () => ({
   sql: vi.fn(),
-  initSchema: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/garmin-api.service.js", () => ({
