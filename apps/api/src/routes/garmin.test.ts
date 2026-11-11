@@ -8,13 +8,13 @@ vi.mock("../db/index.js", () => ({
 
 vi.mock("../services/garmin-api.service.js", () => ({
   garminConfigured: vi.fn(),
-  defaultSyncRange: vi.fn(),
-  syncGarmin: vi.fn(),
+  runGarminSync: vi.fn(),
 }));
 
 import { app } from "../app.js";
 import { sql } from "../db/index.js";
-import { defaultSyncRange, garminConfigured, syncGarmin } from "../services/garmin-api.service.js";
+import { garminConfigured, runGarminSync } from "../services/garmin-api.service.js";
+import { SyncInProgressError } from "../services/sync-runs.service.js";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -69,44 +69,58 @@ describe("POST /api/garmin/sync", () => {
     vi.mocked(garminConfigured).mockReturnValue(false);
     const res = await request(app).post("/api/garmin/sync");
     expect(res.status).toBe(412);
-    expect(syncGarmin).not.toHaveBeenCalled();
+    expect(runGarminSync).not.toHaveBeenCalled();
   });
 
-  it("syncs the default range (full history first, then the last week)", async () => {
+  it("runs the default plan and returns its range", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
     vi.mocked(garminConfigured).mockReturnValue(true);
-    vi.mocked(defaultSyncRange).mockResolvedValue({ start: "2024-02-06", end: "2026-10-24" });
-    vi.mocked(syncGarmin).mockResolvedValue({ synced: 643 });
+    const result = { synced: 643, start: "2024-02-06", end: "2026-10-24", mode: "backfill" };
+    vi.mocked(runGarminSync).mockResolvedValue(result);
 
     const res = await request(app).post("/api/garmin/sync");
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ synced: 643, start: "2024-02-06", end: "2026-10-24" });
-    expect(syncGarmin).toHaveBeenCalledWith("user-1", "2024-02-06", "2026-10-24");
+    expect(res.body.data).toEqual(result);
+    expect(runGarminSync).toHaveBeenCalledWith("user-1", { days: null, trigger: "manual" });
   });
 
   it("honours ?days and ignores a non-numeric value", async () => {
     vi.mocked(garminConfigured).mockReturnValue(true);
-    vi.mocked(syncGarmin).mockResolvedValue({ synced: 3 });
-    vi.mocked(defaultSyncRange).mockResolvedValue({ start: "2026-10-18", end: "2026-10-24" });
+    vi.mocked(runGarminSync).mockResolvedValue({ synced: 3, start: "x", end: "y", mode: "range" });
 
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]);
     await request(app).post("/api/garmin/sync?days=3");
-    const [, start, end] = vi.mocked(syncGarmin).mock.calls[0];
-    expect((Date.parse(end) - Date.parse(start)) / 86_400_000).toBe(2);
-
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]);
     await request(app).post("/api/garmin/sync?days=abc");
-    expect(defaultSyncRange).toHaveBeenCalledTimes(1);
+
+    expect(vi.mocked(runGarminSync).mock.calls.map(([, o]) => o.days)).toEqual([3, null]);
   });
 
   it("explains a rejected (e.g. expired) key", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]);
     vi.mocked(garminConfigured).mockReturnValue(true);
-    vi.mocked(defaultSyncRange).mockResolvedValue({ start: "2026-10-18", end: "2026-10-24" });
-    vi.mocked(syncGarmin).mockRejectedValue(new Error("GARMIN_KEY_REJECTED"));
+    vi.mocked(runGarminSync).mockRejectedValue(new Error("GARMIN_KEY_REJECTED"));
     const res = await request(app).post("/api/garmin/sync");
     expect(res.status).toBe(401);
+    expect(res.body).toMatchObject({ code: "GARMIN_KEY_REJECTED" });
     expect(res.body.error).toMatch(/expired/);
+  });
+
+  it("refuses a second sync while one is running", async () => {
+    mockSql.mockResolvedValueOnce([{ id: "user-1" }]);
+    vi.mocked(garminConfigured).mockReturnValue(true);
+    vi.mocked(runGarminSync).mockRejectedValue(new SyncInProgressError("garmin"));
+    const res = await request(app).post("/api/garmin/sync");
+    expect(res.status).toBe(409);
+  });
+
+  it("doesn't leak unexpected error text", async () => {
+    mockSql.mockResolvedValueOnce([{ id: "user-1" }]);
+    vi.mocked(garminConfigured).mockReturnValue(true);
+    vi.mocked(runGarminSync).mockRejectedValue(new Error("connection to postgres://secret failed"));
+    const res = await request(app).post("/api/garmin/sync");
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("secret");
   });
 });

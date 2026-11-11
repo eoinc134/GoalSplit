@@ -1,6 +1,9 @@
 import { app } from "./app.js";
 import { initSchema } from "./db/index.js";
+import { log } from "./lib/logger.js";
 import { assertSecurityConfig } from "./lib/security-config.js";
+import { startScheduler } from "./services/scheduler.js";
+import { markInterruptedRuns } from "./services/sync-runs.service.js";
 import { encryptLegacyTokens } from "./services/token.service.js";
 import { warnAboutForeignUsers } from "./services/user.service.js";
 
@@ -11,15 +14,18 @@ async function start() {
   await initSchema();
 
   const encrypted = await encryptLegacyTokens();
-  if (encrypted > 0) console.log(`[security] Encrypted ${encrypted} legacy plaintext Strava token row(s)`);
+  if (encrypted > 0) log.info("encrypted legacy plaintext Strava tokens", { count: encrypted });
   await warnAboutForeignUsers();
+  // Any sync still 'running' was cut off by the restart that got us here.
+  await markInterruptedRuns();
 
   app.listen(PORT, () => {
-    console.log(`GoalSplit API running on http://localhost:${PORT}`);
+    log.info("GoalSplit API listening", { port: Number(PORT), env: process.env.NODE_ENV ?? "development" });
   });
+  startScheduler();
 }
 
-start().catch((err) => {
-  console.error("Failed to start API:", err);
+start().catch((err: unknown) => {
+  log.error("failed to start API", { err });
   process.exit(1);
 });

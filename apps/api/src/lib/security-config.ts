@@ -1,3 +1,5 @@
+import { log } from "./logger.js";
+
 // Secrets the API needs before it may serve production traffic. Outside
 // production each one is optional so local dev and tests stay zero-config —
 // the API then runs open, stores tokens unencrypted and accepts the first
@@ -15,7 +17,7 @@ export function assertSecurityConfig(): void {
     throw new Error(`Refusing to start in production without: ${missing.join(", ")}`);
   }
   if (missing.length > 0) {
-    console.warn(`[security] ${missing.join(", ")} not set — fine for local dev, never for a deployed API.`);
+    log.warn("security settings missing — fine for local dev, never for a deployed API", { missing });
   }
   if (process.env.API_KEY && process.env.API_KEY.length < 32) {
     throw new Error("API_KEY must be at least 32 characters (e.g. `openssl rand -hex 32`)");

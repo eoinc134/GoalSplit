@@ -38,9 +38,14 @@ export async function GET(request: NextRequest) {
     const res = await apiFetch("/auth/strava/exchange", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code }),
+      // `scope` is what the athlete actually granted on Strava's consent
+      // screen; the API refuses sign-in without activity:read_all.
+      body: JSON.stringify({ code, scope: params.get("scope") ?? undefined }),
     });
-    if (res.status === 403) return fail("not_allowed");
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return fail(body.error === "insufficient_scope" ? "scope" : "not_allowed");
+    }
     if (res.status === 429) return fail("rate_limited");
     if (!res.ok) return fail("exchange");
     athleteId = ((await res.json()) as { data: { athleteId: number } }).data.athleteId;

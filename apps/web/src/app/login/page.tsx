@@ -4,6 +4,7 @@ const ERRORS: Record<string, string> = {
   no_code: "Strava didn't return an authorisation code. Try again.",
   not_allowed: "This GoalSplit instance belongs to a different Strava athlete.",
   exchange: "Strava rejected the sign-in. Try again.",
+  scope: "GoalSplit needs permission to view your activities (including private ones). Sign in again and leave that box ticked.",
   rate_limited: "Too many sign-in attempts. Wait a few minutes and try again.",
   unavailable: "The GoalSplit API is unreachable right now.",
 };

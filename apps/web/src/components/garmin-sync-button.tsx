@@ -16,8 +16,12 @@ export function GarminSyncButton() {
     setState("syncing");
     setMessage(null);
     try {
-      const { data } = await api.post<{ data: { synced: number; start: string; end: string } }>("/garmin/sync", {});
-      setMessage({ text: `Synced ${data.synced} days (${data.start} to ${data.end})`, ok: true });
+      const { data } = await api.post<{ data: { synced: number; start: string; end: string; mode?: string } }>(
+        "/garmin/sync",
+        {},
+      );
+      const kind = data.mode === "backfill" ? "Backfilled" : "Synced";
+      setMessage({ text: `${kind} ${data.synced} days (${data.start} to ${data.end})`, ok: true });
       router.refresh();
     } catch (err) {
       setMessage({ text: err instanceof Error ? err.message : "Garmin sync failed", ok: false });

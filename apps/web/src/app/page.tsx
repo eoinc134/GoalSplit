@@ -2,6 +2,7 @@ import { StatCard } from "@/components/stat-card";
 import { TeaserCard } from "@/components/teaser-card";
 import { BandBadge } from "@/components/band-badge";
 import { StravaConnect } from "@/components/strava-connect";
+import { SyncStatusPanel } from "@/components/sync-status";
 import { ActivityList } from "@/components/activity-list";
 import { serverFetch } from "@/lib/server-api";
 import { GARMIN_FALLBACK, latestValue } from "@/lib/garmin";
@@ -94,6 +95,7 @@ export default async function DashboardPage({ searchParams }: Readonly<Dashboard
       {/* Strava section */}
       <div className="space-y-4">
         <StravaConnect />
+        <SyncStatusPanel />
         <ActivityList />
       </div>
     </div>

@@ -1,12 +1,14 @@
 import { sql } from "../db/index.js";
 import { refreshToken as stravaRefresh, StravaAuthError } from "../lib/strava-client.js";
 import { decryptToken, encryptToken, isEncrypted } from "../lib/token-crypto.js";
+import { log } from "../lib/logger.js";
 
 interface StoredToken {
   user_id: string;
   access_token: string;
   refresh_token: string;
   expires_at: number;
+  reauth_required_at?: string | null;
 }
 
 // Thrown when Strava no longer accepts our refresh token (the athlete revoked
@@ -15,7 +17,7 @@ export const STRAVA_REAUTH_REQUIRED = "STRAVA_REAUTH_REQUIRED";
 
 export async function getStoredToken(userId: string): Promise<StoredToken | null> {
   const [row] = await sql<StoredToken[]>`
-    SELECT user_id, access_token, refresh_token, expires_at
+    SELECT user_id, access_token, refresh_token, expires_at, reauth_required_at
     FROM strava_tokens
     WHERE user_id = ${userId}
   `;
@@ -41,7 +43,18 @@ export async function saveToken(
       access_token  = EXCLUDED.access_token,
       refresh_token = EXCLUDED.refresh_token,
       expires_at    = EXCLUDED.expires_at,
-      updated_at    = NOW()
+      updated_at    = NOW(),
+      reauth_required_at = NULL
+  `;
+}
+
+// Strava rejected the stored credentials; only a new sign-in (saveToken)
+// clears this.
+export async function markReauthRequired(userId: string, reason: string): Promise<void> {
+  log.warn("strava token rejected, reconnect required", { userId, reason });
+  await sql`
+    UPDATE strava_tokens SET reauth_required_at = COALESCE(reauth_required_at, NOW())
+    WHERE user_id = ${userId}
   `;
 }
 
@@ -57,7 +70,7 @@ async function refreshAndSave(token: StoredToken): Promise<string> {
     return refreshed.access_token;
   } catch (err) {
     if (err instanceof StravaAuthError) {
-      console.error(`Strava refresh rejected for user ${token.user_id}: ${err.message}`);
+      await markReauthRequired(token.user_id, err.message);
       throw new Error(STRAVA_REAUTH_REQUIRED);
     }
     throw err;
@@ -68,6 +81,8 @@ async function refreshAndSave(token: StoredToken): Promise<string> {
 export async function getValidAccessToken(userId: string): Promise<string | null> {
   const token = await getStoredToken(userId);
   if (!token) return null;
+  // Known-dead token: fail fast instead of spending a Strava request on it.
+  if (token.reauth_required_at) throw new Error(STRAVA_REAUTH_REQUIRED);
 
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (token.expires_at - nowSeconds >= 300) return token.access_token;

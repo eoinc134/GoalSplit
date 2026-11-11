@@ -12,7 +12,14 @@ export const dynamic = "force-dynamic";
 // sign-in routes, not as generic proxy calls.
 const BLOCKED_PREFIXES = ["auth/strava"];
 
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "content-disposition", "retry-after", "ratelimit", "ratelimit-policy"];
+const FORWARDED_RESPONSE_HEADERS = [
+  "content-type",
+  "content-disposition",
+  "retry-after",
+  "ratelimit",
+  "ratelimit-policy",
+  "x-request-id",
+];
 
 async function proxy(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
@@ -30,6 +37,10 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
   const headers = new Headers();
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
+  // The API logs this id on every line it writes for the request (including
+  // a sync's progress), so a browser action can be traced across services.
+  const requestId = `web-${crypto.randomUUID().slice(0, 13)}`;
+  headers.set("x-request-id", requestId);
 
   let upstream: Response;
   try {
@@ -39,7 +50,7 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
       body: hasBody ? await request.text() : undefined,
     });
   } catch (err) {
-    console.error("API proxy request failed:", err);
+    console.error(`API proxy request failed (request ${requestId}):`, err);
     return NextResponse.json({ error: "API unavailable", statusCode: 502 }, { status: 502 });
   }
 

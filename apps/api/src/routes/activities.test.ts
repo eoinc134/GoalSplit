@@ -216,14 +216,18 @@ describe("POST /api/activities/sync", () => {
 
   it("syncs, then precomputes stream metrics without waiting for them", async () => {
     mockSql.mockResolvedValueOnce([{ id: "user-1" }]); // users
-    vi.mocked(syncActivities).mockResolvedValueOnce({ synced: 3, pages: 1 });
+    const result = {
+      synced: 3, inserted: 1, pages: 1, detailsFetched: 1, streamsFetched: 1, streamsMissing: 0,
+      complete: true, stopReason: null, pendingEnrichment: 0,
+    };
+    vi.mocked(syncActivities).mockResolvedValueOnce(result);
 
     const res = await request(app).post("/api/activities/sync?full=true");
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ synced: 3, pages: 1 });
-    expect(vi.mocked(syncActivities)).toHaveBeenCalledWith("user-1", { full: true });
-    expect(vi.mocked(ensureActivityMetrics)).toHaveBeenCalledWith("user-1");
+    expect(res.body.data).toEqual(result);
+    expect(vi.mocked(syncActivities)).toHaveBeenCalledWith("user-1", { full: true, trigger: "manual" });
+    await vi.waitFor(() => expect(vi.mocked(ensureActivityMetrics)).toHaveBeenCalledWith("user-1"));
   });
 
   it("maps a Strava rate-limit error to 429", async () => {

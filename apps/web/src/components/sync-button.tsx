@@ -1,40 +1,40 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { SyncResult } from "@goalsplit/types";
+import { api, ApiError } from "@/lib/api";
+import { describeSyncResult } from "@/lib/sync-messages";
 
 export function SyncButton() {
-  const [state, setState] = useState<"idle" | "syncing" | "backfilling" | "done" | "error">("idle");
-  const [result, setResult] = useState<SyncResult | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const router = useRouter();
+  const [state, setState] = useState<"idle" | "syncing" | "backfilling">("idle");
+  const [message, setMessage] = useState<{ text: string; tone: "ok" | "warn" | "error" } | null>(null);
 
   async function handleSync(full: boolean) {
     setState(full ? "backfilling" : "syncing");
-    setResult(null);
-    setErrorMsg(null);
+    setMessage(null);
 
     try {
-      const res = await fetch(`/api/activities/sync${full ? "?full=true" : ""}`, {
-        method: "POST",
-      });
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json.error ?? "Sync failed");
-      }
-
-      setResult(json.data as SyncResult);
-      setState("done");
+      const { data } = await api.post<{ data: SyncResult }>(`/activities/sync${full ? "?full=true" : ""}`, {});
+      setMessage(describeSyncResult(data));
+      router.refresh();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Sync failed");
-      setState("error");
+      const text = err instanceof Error ? err.message : "Sync failed";
+      // A sync already running (e.g. the scheduled one) isn't an error.
+      const tone = err instanceof ApiError && err.code === "SYNC_IN_PROGRESS" ? "warn" : "error";
+      setMessage({ text, tone });
+      if (err instanceof ApiError && err.code === "STRAVA_REAUTH_REQUIRED") router.refresh();
+    } finally {
+      setState("idle");
     }
   }
 
-  const busy = state === "syncing" || state === "backfilling";
+  const busy = state !== "idle";
+  const toneClass = { ok: "text-emerald-400", warn: "text-amber-400", error: "text-red-400" };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <button
         type="button"
         onClick={() => handleSync(false)}
@@ -54,13 +54,9 @@ export function SyncButton() {
         {state === "backfilling" ? "Backfilling..." : "Backfill History"}
       </button>
 
-      {state === "done" && result && (
-        <span className="text-xs text-emerald-400">
-          {result.synced === 0 ? "Already up to date" : `+${result.synced} activities synced`}
-        </span>
+      {message && (
+        <output className={`text-xs ${toneClass[message.tone]}`}>{message.text}</output>
       )}
-
-      {state === "error" && <span className="text-xs text-red-400">{errorMsg}</span>}
     </div>
   );
 }

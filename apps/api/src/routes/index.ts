@@ -6,6 +6,7 @@ import { trainingRouter } from "./training.js";
 import { prsRouter } from "./prs.js";
 import { garminRouter } from "./garmin.js";
 import { researchRouter } from "./research.js";
+import { syncRouter } from "./sync.js";
 
 export const router = Router();
 
@@ -16,3 +17,4 @@ router.use("/training", trainingRouter);
 router.use("/prs", prsRouter);
 router.use("/garmin", garminRouter);
 router.use("/research", researchRouter);
+router.use("/sync", syncRouter);

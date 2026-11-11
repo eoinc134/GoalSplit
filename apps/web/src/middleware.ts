@@ -31,7 +31,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isApi) {
-    return NextResponse.json({ error: "Not signed in", statusCode: 401 }, { status: 401 });
+    // `code` tells the browser client this is *its* session, not an upstream
+    // (Strava/Garmin) credential problem — both are 401s.
+    return NextResponse.json({ error: "Not signed in", code: "SESSION_REQUIRED", statusCode: 401 }, { status: 401 });
   }
   // Middleware requires an absolute Location (a relative one throws), so
   // build it from the incoming URL.

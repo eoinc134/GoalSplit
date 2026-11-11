@@ -2,6 +2,7 @@ import { Router } from "express";
 import { sql } from "../db/index.js";
 import { buildAuthUrl, exchangeCode, StravaAuthError } from "../lib/strava-client.js";
 import { authLimiter } from "../middleware/rate-limit.js";
+import { log } from "../lib/logger.js";
 import { saveToken } from "../services/token.service.js";
 import { getCurrentUserId, isAthleteAllowed } from "../services/user.service.js";
 
@@ -21,23 +22,31 @@ authRouter.get("/strava/authorize-url", (req, res) => {
 });
 
 authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
-  const code = (req.body as { code?: unknown } | undefined)?.code;
+  const { code, scope } = (req.body ?? {}) as { code?: unknown; scope?: unknown };
   if (typeof code !== "string" || code.length === 0) {
     return res.status(400).json({ error: "code is required", statusCode: 400 });
+  }
+  // Strava's consent screen lets the athlete untick permissions. Without
+  // activity:read_all sign-in would "work" but every sync would fail, so
+  // refuse up front (before spending the code). `scope` is what Strava put on
+  // the callback URL; absent means an older web build — let it through.
+  if (typeof scope === "string" && !scope.split(",").includes("activity:read_all")) {
+    log.warn("strava sign-in refused: activity:read_all not granted", { scope });
+    return res.status(403).json({ error: "insufficient_scope", statusCode: 403 });
   }
 
   let tokenData;
   try {
     tokenData = await exchangeCode(code);
   } catch (err) {
-    console.error("Strava code exchange failed:", err);
+    log.error("strava code exchange failed", { err });
     const statusCode = err instanceof StravaAuthError ? 400 : 502;
     return res.status(statusCode).json({ error: "token_exchange_failed", statusCode });
   }
 
   const athlete = tokenData.athlete;
   if (!(await isAthleteAllowed(athlete.id))) {
-    console.warn(`Rejected Strava sign-in from athlete ${athlete.id} (not the allowed athlete)`);
+    log.warn("strava sign-in refused: not the allowed athlete", { athleteId: athlete.id });
     return res.status(403).json({ error: "athlete_not_allowed", statusCode: 403 });
   }
 
@@ -63,6 +72,7 @@ authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
     refresh_token: tokenData.refresh_token,
     expires_at: tokenData.expires_at,
   });
+  log.info("strava connected", { athleteId: athlete.id });
 
   return res.json({ data: { athleteId: athlete.id } });
 });
@@ -79,9 +89,10 @@ authRouter.get("/status", async (_req, res) => {
     strava_athlete_id: number;
     expires_at: number;
     updated_at: string;
+    reauth_required_at: string | null;
   }[]>`
     SELECT u.id, u.username, u.firstname, u.lastname, u.profile_url, u.strava_athlete_id,
-           t.expires_at, t.updated_at
+           t.expires_at, t.updated_at, t.reauth_required_at
     FROM users u
     JOIN strava_tokens t ON t.user_id = u.id
     WHERE u.id = ${userId}
@@ -104,6 +115,7 @@ authRouter.get("/status", async (_req, res) => {
       },
       tokenExpiresAt: row.expires_at,
       lastSyncedAt: row.updated_at,
+      needsReconnect: row.reauth_required_at !== null,
     },
   });
 });

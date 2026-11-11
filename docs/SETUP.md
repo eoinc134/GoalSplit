@@ -31,9 +31,9 @@ Other commands: `npm run build`, `npm run test`, `npm run type-check`, `npm run 
    The callback is the **web** app's route: it runs the sign-in flow (see [Security](#security)).
 3. **Connect Strava** on the dashboard, then **Sync Activities**.
 4. Click **Backfill History** on the Activities page to fetch per-second streams for
-   older activities. Streams power every HR- and pace-based analysis. Strava allows
-   100 requests per 15 minutes, so the backfill stops at ~80 % of that and resumes on
-   the next click.
+   older activities. Streams power every HR- and pace-based analysis. The backfill stops
+   at ~80 % of Strava's rate limit and resumes on the next click (see
+   [Sync pipeline](#sync-pipeline)).
 
 **After each run:** set the run type on Strava (*Race*, *Long Run* or *Workout*;
 leave easy runs as default) and give workouts a descriptive name, then **Sync**.
@@ -58,7 +58,7 @@ API itself: no password, no home machine.
    Key**, and choose an expiry (30 days to a year). The key is shown only once.
 2. Set `GARMIN_API=<key>` in `apps/api/.env`, and in the API service's Railway variables.
 3. **Sync** on the dashboard also refreshes Garmin. The first sync backfills everything
-   since your first Strava activity, and later ones re-read the last week.
+   since your first Strava activity, and later ones continue from the newest stored day.
    `POST /api/garmin/sync?days=N` re-syncs the last N days on demand.
 
 When the key expires, sync reports "Garmin rejected the API key": create a new one
@@ -111,6 +111,43 @@ GoalSplit is single-athlete. The pieces:
 
 Locally, leaving those variables empty runs everything open, with no sign-in.
 
+## Sync pipeline
+
+Syncs run when you click **Sync**, and automatically every `SYNC_INTERVAL_MINUTES`
+(default 360, i.e. every 6 hours; `0` turns it off). Each Strava sync is followed by
+metric precomputation and a Garmin sync. The dashboard's **Data sync** panel shows the
+latest run of each, with the reason if it failed or stopped early.
+
+- **Strava, incremental:** fetches activities newer than the latest stored one, and
+  re-reads the past 7 days to pick up edits. New activities get their detail and streams
+  straight away. Each sync also *repairs* up to 20 activities still missing them, for
+  example ones saved by a sync that hit the rate limit. Activities Strava has no streams
+  for (manual entries) are flagged once and not asked about again.
+- **Strava rate limits:** Strava meters an overall bucket and a stricter read bucket,
+  each per 15 minutes and per day. Syncs read both from the response headers and stop at
+  80 % of whichever is closest to its limit. A stopped sync reports `complete: false` and
+  why, and the next one continues. If the last incremental sync didn't finish reading the
+  activity list, the next one resumes from its cursor.
+- **Garmin:** fetched and saved in windows of up to 84 days. The first sync (and the one
+  after a `GARMIN_MAPPING_VERSION` bump) backfills full history. If it's cut off, the
+  next sync resumes after the last saved window. After that, syncs start a few days
+  before the newest stored day, so a stretch without syncing leaves no gap.
+- **Failures:** every outbound call has a 30 s timeout. Network errors and 5xx get 2
+  retries with backoff; 4xx never do. Only one sync per source runs at a time; a second
+  request gets `409`. Every attempt is recorded in `sync_runs` (status `ok`, `partial`,
+  `failed` or `interrupted`). Runs cut off by a restart are marked `interrupted` at startup.
+- **Expired or revoked Strava token:** the token is flagged. The dashboard shows
+  **Reconnect Strava**, and scheduled syncs pause until you do. Sign-in requires the
+  `activity:read_all` permission, since syncs can't work without it.
+- **Logs:** one line per request (request id, method, path, status, duration) and per sync
+  (run id, counts, duration, rate-limit usage). Production writes JSON lines, which
+  Railway can filter by `level` and any field; dev writes readable lines. The web proxy
+  sends a request id along with each call, so one click can be followed across both
+  services. Set `LOG_LEVEL` to `debug`, `info` (default), `warn` or `error`.
+
+The in-process scheduler and the one-sync-at-a-time lock assume a single API instance.
+Running more than one replica would need a Postgres advisory lock instead.
+
 ## Deploy (Railway)
 
 Two services from this repo, plus a Postgres add-on.
@@ -122,7 +159,9 @@ Two services from this repo, plus a Postgres add-on.
 
 Set the Strava app's callback domain to the **web** service's Railway domain. Only the web
 app calls the API, so if `API_URL` uses Railway's private network, the API service needs
-no public domain at all. Generate secrets with `openssl rand -hex 32`.
+no public domain at all. Generate secrets with `openssl rand -hex 32`. Optional API
+variables: `SYNC_INTERVAL_MINUTES`, `LOG_LEVEL` (see [Sync pipeline](#sync-pipeline)).
+Keep the API at one replica.
 
 ## API
 
@@ -136,9 +175,10 @@ no public domain at all. Generate secrets with `openssl rand -hex 32`.
 | `GET` | `/api/training/hr-drift?days=7–365&limit=1–50` | Aerobic decoupling per run |
 | `GET` | `/api/training/trends?weeks=1–52` | Weekly volume by type, raw run pace |
 | `GET` | `/api/activities` · `/api/activities/:id` | Synced activities, single activity with route + notes |
-| `POST` | `/api/activities/sync[?full=true]` | Sync new activities, or backfill history |
+| `POST` | `/api/activities/sync[?full=true]` | Sync new activities, or backfill history; `complete`/`stopReason` say if it stopped early |
+| `GET` | `/api/sync/status` | Latest Strava and Garmin runs, outstanding enrichment, schedule |
 | `GET` | `/api/activities/export?days=&type=&format=markdown\|json` | Training log for Claude |
 | `GET` / `POST` / `DELETE` | `/api/prs` | Personal records (Strava-derived + manual) |
 | `GET` | `/api/garmin/days?days=7–365` | Daily Garmin wellness data |
-| `POST` | `/api/garmin/sync[?days=N]` | Pull from Garmin's Personal API (full history on first sync) |
+| `POST` | `/api/garmin/sync[?days=N]` | Pull from Garmin's Personal API (resumable full history on first sync) |
 | `GET` | `/api/auth/strava` · `/api/auth/status` | Strava OAuth and connection status |

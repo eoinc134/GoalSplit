@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { log } from "../lib/logger.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL env var is not set");
@@ -8,6 +9,10 @@ export const sql = postgres(process.env.DATABASE_URL, {
   max: 10,
   idle_timeout: 30,
   connect_timeout: 10,
+  // Postgres sends a NOTICE for every "IF NOT EXISTS … skipping" in
+  // initSchema; postgres.js prints each one as a multi-line object, which
+  // buried real startup logs. Keep them at debug level.
+  onnotice: (notice) => log.debug("postgres notice", { message: notice.message, code: notice.code }),
 });
 
 export async function initSchema(): Promise<void> {
@@ -221,5 +226,40 @@ export async function initSchema(): Promise<void> {
     )
   `;
 
-  console.log("DB schema ready");
+  // Strava answered "no streams" (404/empty) for this activity — manual
+  // entries, some indoor activities. Recorded so syncs stop re-asking.
+  await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS streams_missing BOOLEAN NOT NULL DEFAULT FALSE`;
+
+  // Set when Strava rejects the stored token (access revoked, refresh token
+  // invalid); cleared when a new sign-in saves fresh tokens. Lets the UI say
+  // "Reconnect Strava" without waiting for a sync to fail, and stops syncs
+  // spending requests on a token that can't work.
+  await sql`ALTER TABLE strava_tokens ADD COLUMN IF NOT EXISTS reauth_required_at TIMESTAMPTZ`;
+
+  // One row per Strava/Garmin sync attempt — the pipeline's audit trail and
+  // the source of the "last sync" status in the UI. `details` holds
+  // source-specific progress (rate-limit usage, Garmin backfill cursor, …).
+  // Rows still 'running' at startup belong to a process that died mid-sync
+  // and are marked 'interrupted' (services/sync-runs.service.ts).
+  await sql`
+    CREATE TABLE IF NOT EXISTS sync_runs (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source      TEXT NOT NULL CHECK (source IN ('strava', 'garmin')),
+      mode        TEXT NOT NULL,
+      trigger     TEXT NOT NULL,
+      status      TEXT NOT NULL CHECK (status IN ('running', 'ok', 'partial', 'failed', 'interrupted')),
+      started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ,
+      items       INTEGER NOT NULL DEFAULT 0,
+      details     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      error       TEXT
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_sync_runs_user_source
+      ON sync_runs (user_id, source, started_at DESC)
+  `;
+
+  log.info("DB schema ready");
 }

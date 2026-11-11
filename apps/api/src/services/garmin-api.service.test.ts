@@ -86,14 +86,70 @@ describe("Garmin Personal API service", () => {
   });
 });
 
-describe("defaultSyncRange", () => {
-  it("backfills from the first Strava activity when there's no older history — even with recent rows present", async () => {
-    mockSql.mockResolvedValueOnce([{ has_history: false, first_activity: "2024-02-06" }]);
-    expect(await defaultSyncRange("user-1", "2026-10-26")).toEqual({ start: "2024-02-06", end: "2026-10-26" });
+describe("syncGarmin windows", () => {
+  it("saves each window as it goes and records how far it got", async () => {
+    const saveProgress = vi.fn().mockResolvedValue(undefined);
+    await syncGarmin("user-1", "2026-01-01", "2026-06-30", { saveProgress });
+    // 181 days in windows of 84 → 3 windows, progress saved after each.
+    expect(saveProgress.mock.calls.map(([d]) => d.completedThrough)).toEqual(["2026-03-25", "2026-06-17", "2026-06-30"]);
   });
 
-  it("re-reads only the last week once history exists", async () => {
-    mockSql.mockResolvedValueOnce([{ has_history: true, first_activity: "2024-02-06" }]);
-    expect(await defaultSyncRange("user-1", "2026-10-26")).toEqual({ start: "2026-10-20", end: "2026-10-26" });
+  it("keeps earlier windows when a later one fails", async () => {
+    const saveProgress = vi.fn().mockResolvedValue(undefined);
+    let dailyCalls = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("personal-api-key/token")) return respond(200, undefined, TOKEN);
+      if (url.includes("dailysummaries")) return ++dailyCalls === 2 ? respond(400) : respond(200, { data: [] });
+      if (url.includes("dailySleepSummariesByDate")) return respond(200, []);
+      return respond(204);
+    });
+    await expect(syncGarmin("user-1", "2026-01-01", "2026-06-30", { saveProgress })).rejects.toThrow("Garmin API 400");
+    expect(saveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports Garmin rate limiting clearly", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url.includes("personal-api-key/token") ? respond(200, undefined, TOKEN) : respond(429),
+    );
+    await expect(syncGarmin("user-1", "2026-10-20", "2026-10-21")).rejects.toThrow("GARMIN_RATE_LIMITED");
+  });
+});
+
+describe("defaultSyncRange", () => {
+  const TODAY = "2026-10-26";
+  function state(row: Record<string, unknown>, lastBackfill?: Record<string, unknown>) {
+    mockSql
+      .mockResolvedValueOnce([{ has_history: false, outdated: false, first_activity: "2024-02-06", latest_day: null, ...row }])
+      .mockResolvedValueOnce(lastBackfill ? [lastBackfill] : []);
+  }
+
+  it("backfills from the first Strava activity when there's no history — even with recent rows present", async () => {
+    state({ latest_day: "2026-10-25" });
+    expect(await defaultSyncRange("user-1", TODAY)).toEqual({ start: "2024-02-06", end: TODAY, mode: "backfill" });
+  });
+
+  it("resumes an interrupted backfill after the last window it saved", async () => {
+    state({ has_history: true, latest_day: "2025-03-01" }, { status: "interrupted", details: { completedThrough: "2025-03-01" } });
+    expect(await defaultSyncRange("user-1", TODAY)).toEqual({ start: "2025-03-02", end: TODAY, mode: "backfill" });
+  });
+
+  it("re-reads only the last week once a backfill has finished and syncs are current", async () => {
+    state({ has_history: true, latest_day: TODAY }, { status: "ok", details: {} });
+    expect(await defaultSyncRange("user-1", TODAY)).toEqual({ start: "2026-10-20", end: TODAY, mode: "incremental" });
+  });
+
+  it("covers the whole gap after a stretch without syncing", async () => {
+    state({ has_history: true, latest_day: "2026-09-30" }, { status: "ok", details: {} });
+    expect(await defaultSyncRange("user-1", TODAY)).toEqual({ start: "2026-09-24", end: TODAY, mode: "incremental" });
+  });
+
+  it("trusts the old history check for databases from before sync_runs", async () => {
+    state({ has_history: true, latest_day: "2026-10-25" });
+    expect((await defaultSyncRange("user-1", TODAY)).mode).toBe("incremental");
+  });
+
+  it("backfills again when rows come from an older mapping version", async () => {
+    state({ has_history: true, outdated: true, latest_day: "2026-10-25" });
+    expect((await defaultSyncRange("user-1", TODAY)).mode).toBe("backfill");
   });
 });

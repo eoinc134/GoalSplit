@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
 import { syncActivities } from "../services/sync.service.js";
-import { STRAVA_REAUTH_REQUIRED } from "../services/token.service.js";
-import { StravaAuthError } from "../lib/strava-client.js";
 import {
   buildTrainingMarkdown,
   buildTrainingSummary,
@@ -11,8 +9,8 @@ import {
 } from "../lib/training-export.js";
 import { buildActivityRoutes } from "../lib/polyline.js";
 import { getCurrentUserId } from "../services/user.service.js";
-import { ensureActivityMetrics } from "../services/metrics.service.js";
-import { defaultSyncRange, garminConfigured, syncGarmin } from "../services/garmin-api.service.js";
+import { afterStravaSync } from "../services/pipeline.service.js";
+import { syncErrorResponse } from "./sync-errors.js";
 import { analyseActivities } from "../services/analytics-data.service.js";
 
 export const activitiesRouter = Router();
@@ -140,6 +138,10 @@ activitiesRouter.get("/export", async (req, res) => {
   });
 });
 
+// Incremental sync (new activities + the last week re-read, plus a bounded
+// repair of activities missing detail/streams) or, with ?full=true, a full
+// history walk. Responds with complete: false and a stopReason when Strava's
+// rate limit cut it short — everything fetched so far is kept.
 activitiesRouter.post("/sync", async (req, res) => {
   const userId = await getCurrentUserId();
   if (!userId) {
@@ -147,34 +149,14 @@ activitiesRouter.post("/sync", async (req, res) => {
   }
 
   try {
-    const full = req.query.full === "true";
-    const result = await syncActivities(userId, { full });
-    // Summarise any newly fetched streams now rather than on the next
-    // Training-page load. Not awaited — a long backfill can take a while, and
-    // the analytics endpoints still fill any gap lazily if this hasn't finished.
-    ensureActivityMetrics(userId).catch((err: unknown) => console.error("Metrics precompute failed:", err));
-    // Refresh Garmin wellness data alongside, so one Sync keeps everything current.
-    if (garminConfigured()) {
-      const today = new Date().toISOString().slice(0, 10);
-      defaultSyncRange(userId, today)
-        .then(({ start, end }) => syncGarmin(userId, start, end))
-        .catch((err: unknown) => console.error("Garmin sync failed:", err));
-    }
+    const result = await syncActivities(userId, { full: req.query.full === "true", trigger: "manual" });
+    // Not awaited — metrics and Garmin can take a while; the outcome lands in
+    // sync_runs (GET /api/sync/status).
+    void afterStravaSync(userId, "manual");
     return res.json({ data: result });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "";
-    if (message === "RATE_LIMIT_EXCEEDED") {
-      return res.status(429).json({ error: "Strava rate limit reached — try again in 15 minutes", statusCode: 429 });
-    }
-    if (message === STRAVA_REAUTH_REQUIRED || err instanceof StravaAuthError) {
-      return res.status(401).json({
-        error: "Strava access was revoked or has expired — sign out and sign in with Strava again",
-        code: STRAVA_REAUTH_REQUIRED,
-        statusCode: 401,
-      });
-    }
-    console.error("Strava sync failed:", err);
-    return res.status(500).json({ error: "Sync failed — see API logs", statusCode: 500 });
+    const { status, body } = syncErrorResponse(err, "strava");
+    return res.status(status).json(body);
   }
 });
 

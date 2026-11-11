@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { sql } from "../db/index.js";
-import { addDaysUtc } from "../lib/dates.js";
 import { getCurrentUserId } from "../services/user.service.js";
-import { defaultSyncRange, garminConfigured, syncGarmin } from "../services/garmin-api.service.js";
+import { garminConfigured, runGarminSync } from "../services/garmin-api.service.js";
+import { syncErrorResponse } from "./sync-errors.js";
 import { getRecoverySummary, loadGarminDays } from "../services/recovery.service.js";
 
 export const garminRouter = Router();
@@ -16,8 +16,9 @@ function positiveInt(raw: unknown): number | null {
 
 // Pulls wellness data from Garmin's official Personal API (see
 // services/garmin-api.service.ts). With no ?days, the first sync backfills
-// everything since the first Strava activity and later syncs re-read the last
-// week. ?days=N re-syncs the last N days.
+// everything since the first Strava activity (resuming if interrupted) and
+// later syncs continue from the newest stored day. ?days=N re-syncs the last
+// N days.
 garminRouter.post("/sync", async (req, res) => {
   const userId = await getCurrentUserId();
   if (!userId) return res.status(401).json({ error: "Connect Strava before syncing Garmin data", statusCode: 401 });
@@ -25,24 +26,12 @@ garminRouter.post("/sync", async (req, res) => {
     return res.status(412).json({ error: "Set GARMIN_API (a Garmin Personal API key) in apps/api/.env", statusCode: 412 });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const requested = positiveInt(req.query.days);
-  const range = requested === null
-    ? await defaultSyncRange(userId, today)
-    : { start: addDaysUtc(today, -(Math.min(requested, 1100) - 1)), end: today };
-
   try {
-    const result = await syncGarmin(userId, range.start, range.end);
-    return res.json({ data: { ...result, ...range } });
+    const result = await runGarminSync(userId, { days: positiveInt(req.query.days), trigger: "manual" });
+    return res.json({ data: result });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Garmin sync failed";
-    if (message === "GARMIN_KEY_REJECTED") {
-      return res.status(401).json({
-        error: "Garmin rejected the API key. It may have expired: create a new one in Garmin Connect → Personal API Key",
-        statusCode: 401,
-      });
-    }
-    return res.status(502).json({ error: message, statusCode: 502 });
+    const { status, body } = syncErrorResponse(err, "garmin");
+    return res.status(status).json(body);
   }
 });
 

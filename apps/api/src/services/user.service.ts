@@ -1,4 +1,5 @@
 import { sql } from "../db/index.js";
+import { log } from "../lib/logger.js";
 
 // Single-user app: the one allowed Strava athlete is "the user" everywhere.
 // Kept in one place so moving to real per-request auth is a one-file change.
@@ -45,9 +46,9 @@ export async function warnAboutForeignUsers(): Promise<void> {
     SELECT COUNT(*)::text AS count FROM users WHERE strava_athlete_id <> ${allowed}
   `;
   if (Number(count) > 0) {
-    console.warn(
-      `[security] ${count} user row(s) belong to a Strava athlete other than ALLOWED_STRAVA_ATHLETE_ID. ` +
-        `They are ignored; inspect with: SELECT id, strava_athlete_id, firstname FROM users;`,
-    );
+    log.warn("user rows from a Strava athlete other than ALLOWED_STRAVA_ATHLETE_ID are being ignored", {
+      count: Number(count),
+      inspect: "SELECT id, strava_athlete_id, firstname FROM users;",
+    });
   }
 }

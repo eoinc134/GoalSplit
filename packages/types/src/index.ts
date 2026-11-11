@@ -35,11 +35,52 @@ export interface SyncStatus {
   athlete?: StravaAthlete;
   lastSyncedAt?: string;
   tokenExpiresAt?: number;
+  // Strava rejected the stored token (access revoked or expired): sign in
+  // with Strava again to fix.
+  needsReconnect?: boolean;
 }
 
+// Why a Strava sync stopped before finishing — it resumes on the next sync.
+export type SyncStopReason = "rate_limit_15min" | "rate_limit_daily";
+
 export interface SyncResult {
-  synced: number;
+  synced: number; // activities read from the list (new + re-checked)
+  inserted: number; // of which new
   pages: number;
+  detailsFetched: number;
+  streamsFetched: number;
+  streamsMissing: number; // activities Strava has no streams for
+  complete: boolean;
+  stopReason: SyncStopReason | null;
+  // Activities still missing their detail payload or streams afterwards.
+  pendingEnrichment: number;
+}
+
+export type SyncRunStatus = "running" | "ok" | "partial" | "failed" | "interrupted";
+
+export interface SyncRunSummary {
+  id: string;
+  mode: string; // strava: incremental | full; garmin: incremental | backfill | range
+  trigger: string; // manual | scheduled | after_strava
+  status: SyncRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  items: number;
+  error: string | null;
+  stopReason: string | null;
+}
+
+export interface SyncSourceStatus {
+  running: boolean;
+  last: SyncRunSummary | null;
+  lastSuccess: SyncRunSummary | null;
+  recent: SyncRunSummary[];
+}
+
+export interface SyncStatusResponse {
+  strava: SyncSourceStatus & { pendingEnrichment: number };
+  garmin: SyncSourceStatus & { configured: boolean };
+  schedule: { intervalMinutes: number; nextRunAt: string | null };
 }
 
 export interface ApiResponse<T> {
