@@ -63,8 +63,14 @@ jobs:
 
       # Exact versions from the lock; no Jupyter — CI never executes notebooks
       # (they need the personal dataset, which isn't in the repo).
+      # --only-binary :all: installs prebuilt wheels only, so no package's
+      # setup.py / build backend ever runs here. Every locked dependency ships a
+      # Linux wheel for Python 3.13; if a new one doesn't, this step fails
+      # loudly instead of quietly building from source.
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest ruff -c requirements.lock
+        # Block scalar: the ": " in ":all: -r" would otherwise read as YAML.
+        run: |
+          pip install --only-binary :all: -r requirements.txt pytest ruff -c requirements.lock
 
       - name: Lint
         run: ruff check --output-format=github .
