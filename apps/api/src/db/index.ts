@@ -11,5 +11,5 @@ export const sql = postgres(process.env.DATABASE_URL, {
   connect_timeout: 10,
   // postgres.js prints server NOTICEs as multi-line objects by default; keep
   // them at debug level. (Schema changes are migrations now — see migrate.ts.)
-  onnotice: (notice) => log.debug("postgres notice", { message: notice.message, code: notice.code }),
+  onnotice: (notice) => log.debug("postgres notice", { event: "db.notice", message: notice.message, code: notice.code }),
 });

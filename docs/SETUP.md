@@ -203,6 +203,9 @@ no public domain at all. Generate secrets with `openssl rand -hex 32`. Optional 
 variables: `SYNC_INTERVAL_MINUTES`, `LOG_LEVEL` (see [Sync pipeline](#sync-pipeline)).
 Keep the API at one replica.
 
+For logs, Sentry, health checks and the Railway healthcheck paths (API `/health/ready`,
+web `/api/health/live`), see [OBSERVABILITY.md](OBSERVABILITY.md).
+
 ## API
 
 | Method | Path | Returns |
@@ -216,6 +219,7 @@ Keep the API at one replica.
 | `GET` | `/api/training/trends?weeks=1–52` | Weekly volume by type, raw run pace |
 | `GET` | `/api/activities` · `/api/activities/:id` | Synced activities, single activity with route + notes |
 | `POST` | `/api/activities/sync[?full=true]` | Sync new activities, or backfill history; `complete`/`stopReason` say if it stopped early |
+| `GET` | `/health/live` · `/health/ready` | Liveness, and readiness (DB + migrations). Public, see [OBSERVABILITY.md](OBSERVABILITY.md#health-checks) |
 | `GET` | `/api/sync/status` | Latest Strava and Garmin runs, outstanding enrichment, schedule |
 | `GET` | `/api/activities/export?days=&type=&format=markdown\|json` | Training log for Claude |
 | `GET` / `POST` / `DELETE` | `/api/prs` | Personal records (Strava-derived + manual) |

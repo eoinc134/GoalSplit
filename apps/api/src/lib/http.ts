@@ -48,7 +48,7 @@ export async function fetchWithRetry(url: string, init: RequestInit, options: Re
     }
 
     const delay = backoffMs[Math.min(attempt, backoffMs.length - 1)] ?? 0;
-    log.warn("outbound request failed, retrying", { call: label, attempt: attempt + 1, failure, retryInMs: delay });
+    log.warn("outbound request failed, retrying", { event: "http.outbound_retry", call: label, attempt: attempt + 1, failure, retryInMs: delay });
     await sleep(delay);
   }
 }

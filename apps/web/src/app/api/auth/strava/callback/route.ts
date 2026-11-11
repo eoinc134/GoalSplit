@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiFetch } from "@/lib/server-api";
+import { log } from "@/lib/log";
 import {
   cookieOptions,
   createSessionValue,
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
     if (!res.ok) return fail("exchange");
     athleteId = ((await res.json()) as { data: { athleteId: number } }).data.athleteId;
   } catch (err) {
-    console.error("Strava code exchange via API failed:", err);
+    log.error("strava code exchange via API failed", { event: "auth.exchange_failed", err });
     return fail("unavailable");
   }
 

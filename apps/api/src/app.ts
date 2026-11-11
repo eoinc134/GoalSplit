@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { router } from "./routes/index.js";
+import { healthRouter } from "./routes/health.js";
 import { requireApiKey } from "./middleware/api-key.js";
 import { generalLimiter, syncLimiter } from "./middleware/rate-limit.js";
 import { requestLog } from "./middleware/request-log.js";
@@ -25,9 +26,9 @@ app.set("trust proxy", 1);
 app.use(requestLog);
 app.use(express.json({ limit: "100kb" }));
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
+// /health, /health/live, /health/ready — public, outside the API key and
+// rate limits (see routes/health.ts).
+app.use(healthRouter);
 
 app.use("/api", generalLimiter, requireApiKey);
 app.post(["/api/activities/sync", "/api/garmin/sync"], syncLimiter);
@@ -47,6 +48,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     // e.g. malformed JSON or an oversized body from express.json()
     return res.status(status).json({ error: "Bad request", statusCode: status });
   }
-  log.error("unhandled API error", { err });
+  log.error("unhandled API error", { event: "http.unhandled_error", err });
   return res.status(500).json({ error: "Internal server error", statusCode: 500 });
 });

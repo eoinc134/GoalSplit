@@ -85,7 +85,7 @@ export class StravaAuthError extends Error {
 }
 
 async function failTokenCall(context: string, res: Response): Promise<never> {
-  log.error("strava token call failed", { call: context, status: res.status, body: await res.text().catch(() => "") });
+  log.error("strava token call failed", { event: "strava.token_error", call: context, status: res.status, body: await res.text().catch(() => "") });
   if (res.status === 400 || res.status === 401) throw new StravaAuthError(context, res.status);
   throw new Error(`${context}: Strava returned ${res.status}`);
 }
@@ -156,7 +156,7 @@ async function stravaGet(accessToken: string, path: string): Promise<Response> {
     { label: `strava GET ${path.split("?")[0].replace(/\/\d+/g, "/:id")}` },
   );
   if (res.status === 429) {
-    log.warn("strava rate limit hit (429)", { rate: parseRateInfo(res.headers) });
+    log.warn("strava rate limit hit (429)", { event: "strava.rate_limited", rate: parseRateInfo(res.headers) });
     throw new Error("RATE_LIMIT_EXCEEDED");
   }
   if (res.status === 401) throw new StravaAuthError("Strava API call", 401);

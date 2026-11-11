@@ -46,7 +46,7 @@ export async function warnAboutForeignUsers(): Promise<void> {
     SELECT COUNT(*)::text AS count FROM users WHERE strava_athlete_id <> ${allowed}
   `;
   if (Number(count) > 0) {
-    log.warn("user rows from a Strava athlete other than ALLOWED_STRAVA_ATHLETE_ID are being ignored", {
+    log.warn("user rows from a Strava athlete other than ALLOWED_STRAVA_ATHLETE_ID are being ignored", { event: "security.foreign_users", 
       count: Number(count),
       inspect: "SELECT id, strava_athlete_id, firstname FROM users;",
     });

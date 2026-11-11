@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiFetch } from "@/lib/server-api";
+import { log } from "@/lib/log";
 import { cookieOptions, OAUTH_STATE_COOKIE, randomState } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET() {
     if (!res.ok) throw new Error(`API returned ${res.status}`);
     url = ((await res.json()) as { data: { url: string } }).data.url;
   } catch (err) {
-    console.error("Could not start Strava sign-in:", err);
+    log.error("could not start Strava sign-in", { event: "auth.start_failed", err });
     return new NextResponse(null, { status: 303, headers: { Location: "/login?error=unavailable" } });
   }
 

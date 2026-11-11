@@ -3,7 +3,15 @@ import { authDisabled, SESSION_COOKIE, sessionSecret, verifySessionValue } from 
 
 // Gate for the whole app: every page and every /api/* proxy call needs a valid
 // session cookie, except the sign-in flow itself.
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/strava", "/api/auth/strava/callback", "/api/auth/logout"]);
+// The health routes are for Railway and the uptime monitor (pass/fail only).
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/api/auth/strava",
+  "/api/auth/strava/callback",
+  "/api/auth/logout",
+  "/api/health",
+  "/api/health/live",
+]);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -44,5 +52,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /monitoring is the Sentry tunnel (next.config.ts): browser error reports,
+  // which must get through even when the session has expired.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|monitoring).*)"],
 };

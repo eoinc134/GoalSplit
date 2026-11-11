@@ -65,7 +65,7 @@ export async function trackSyncRun<T>(
       INSERT INTO sync_runs (id, user_id, source, mode, trigger, status)
       VALUES (${runId}, ${opts.userId}, ${opts.source}, ${opts.mode}, ${opts.trigger}, 'running')
     `;
-    runLog.info("sync started");
+    runLog.info("sync started", { event: "sync.started" });
 
     const ctx: RunContext = {
       runId,
@@ -88,8 +88,8 @@ export async function trackSyncRun<T>(
       await sql`
         UPDATE sync_runs SET status = 'failed', finished_at = NOW(), error = ${describe(err)}
         WHERE id = ${runId}
-      `.catch((dbErr: unknown) => runLog.error("could not record failed sync", { err: dbErr }));
-      runLog.error("sync failed", { durationMs, err });
+      `.catch((dbErr: unknown) => runLog.error("could not record failed sync", { event: "sync.record_failed", err: dbErr }));
+      runLog.error("sync failed", { event: "sync.failed", durationMs, err });
       throw err;
     }
 
@@ -100,13 +100,28 @@ export async function trackSyncRun<T>(
         details = ${sql.json(details as postgres.JSONValue)}
       WHERE id = ${runId}
     `;
-    const fields = { durationMs: Date.now() - started, items: outcome.items, ...details };
+    const fields = { event: "sync.finished", status: outcome.status, durationMs: Date.now() - started, items: outcome.items, ...details };
     if (outcome.status === "partial") runLog.warn("sync finished partially", fields);
     else runLog.info("sync finished", fields);
     return outcome.result;
   } finally {
     running.delete(key);
   }
+}
+
+// Called on graceful shutdown: this process's own running syncs are about to
+// be cut off, so record that now (with the reason) instead of leaving them
+// for the next boot's markInterruptedRuns. Syncs are resumable, so the next
+// one carries on.
+export async function interruptActiveRuns(reason: string): Promise<number> {
+  const ids = [...running.values()];
+  if (ids.length === 0) return 0;
+  await sql`
+    UPDATE sync_runs SET status = 'interrupted', finished_at = NOW(), error = ${reason}
+    WHERE id = ANY(${ids}) AND status = 'running'
+  `;
+  log.warn("interrupted running syncs for shutdown", { event: "sync.interrupted", count: ids.length, runIds: ids, reason });
+  return ids.length;
 }
 
 // Runs left 'running' by a process that died (deploy, crash, OOM) mid-sync.
@@ -117,7 +132,7 @@ export async function markInterruptedRuns(): Promise<number> {
     WHERE status = 'running'
     RETURNING id
   `;
-  if (rows.length > 0) log.warn("marked interrupted sync runs", { count: rows.length });
+  if (rows.length > 0) log.warn("marked interrupted sync runs", { event: "sync.interrupted", count: rows.length });
   return rows.length;
 }
 

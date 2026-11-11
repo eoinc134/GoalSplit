@@ -66,7 +66,7 @@ async function get<T>(path: string): Promise<T | null> {
     throw new Error("GARMIN_KEY_REJECTED");
   }
   if (res.status === 429) {
-    log.warn("garmin rate limit hit (429)", { path: path.split("?")[0], retryAfter: res.headers.get("retry-after") });
+    log.warn("garmin rate limit hit (429)", { event: "garmin.rate_limited", path: path.split("?")[0], retryAfter: res.headers.get("retry-after") });
     throw new Error("GARMIN_RATE_LIMITED");
   }
   if (!res.ok) throw new Error(`Garmin API ${res.status} for ${path.split("?")[0]}`);

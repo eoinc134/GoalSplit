@@ -51,7 +51,7 @@ export async function saveToken(
 // Strava rejected the stored credentials; only a new sign-in (saveToken)
 // clears this.
 export async function markReauthRequired(userId: string, reason: string): Promise<void> {
-  log.warn("strava token rejected, reconnect required", { userId, reason });
+  log.warn("strava token rejected, reconnect required", { event: "strava.reauth_required", userId, reason });
   await sql`
     UPDATE strava_tokens SET reauth_required_at = COALESCE(reauth_required_at, NOW())
     WHERE user_id = ${userId}

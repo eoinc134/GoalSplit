@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiFetch } from "@/lib/server-api";
+import { log } from "@/lib/log";
 
 // Same-origin proxy from the browser to the API. middleware.ts has already
 // checked the session by the time a request gets here; this adds the API key
@@ -50,7 +51,7 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
       body: hasBody ? await request.text() : undefined,
     });
   } catch (err) {
-    console.error(`API proxy request failed (request ${requestId}):`, err);
+    log.error("API proxy request failed", { event: "proxy.failed", requestId, path: `/${joined}`, err });
     return NextResponse.json({ error: "API unavailable", statusCode: 502 }, { status: 502 });
   }
 

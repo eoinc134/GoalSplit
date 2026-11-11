@@ -17,7 +17,7 @@ export function assertSecurityConfig(): void {
     throw new Error(`Refusing to start in production without: ${missing.join(", ")}`);
   }
   if (missing.length > 0) {
-    log.warn("security settings missing — fine for local dev, never for a deployed API", { missing });
+    log.warn("security settings missing — fine for local dev, never for a deployed API", { event: "security.config_missing", missing });
   }
   if (process.env.API_KEY && process.env.API_KEY.length < 32) {
     throw new Error("API_KEY must be at least 32 characters (e.g. `openssl rand -hex 32`)");

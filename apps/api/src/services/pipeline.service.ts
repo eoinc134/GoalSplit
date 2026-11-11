@@ -12,14 +12,14 @@ import { isSyncRunning, SyncInProgressError, type SyncTrigger } from "./sync-run
 export async function afterStravaSync(userId: string, trigger: SyncTrigger): Promise<void> {
   try {
     const { computed, pending } = await ensureActivityMetrics(userId);
-    if (computed > 0 || pending > 0) log.info("activity metrics computed", { computed, pending });
+    if (computed > 0 || pending > 0) log.info("activity metrics computed", { event: "metrics.computed", computed, pending });
   } catch (err) {
-    log.error("activity metrics precompute failed", { err });
+    log.error("activity metrics precompute failed", { event: "metrics.failed", err });
   }
 
   if (!garminConfigured()) return;
   if (isSyncRunning("garmin", userId)) {
-    log.debug("garmin sync already running, skipping follow-up sync");
+    log.debug("garmin sync already running, skipping follow-up sync", { event: "garmin.follow_up_skipped" });
     return;
   }
   try {

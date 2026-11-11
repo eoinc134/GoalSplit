@@ -66,16 +66,16 @@ export function runMigrations(databaseUrl = process.env.DATABASE_URL): Promise<s
       // Only what the CLI needs: no API secrets in the child's environment.
       { env: { PATH: process.env.PATH, DATABASE_URL: databaseUrl }, timeout: TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        log.debug("migration output", { stdout, stderr });
+        log.debug("migration output", { event: "db.migration_output", stdout, stderr });
         if (err) {
           const reason = err.killed ? `Migrations timed out after ${TIMEOUT_MS / 1000} s` : describeMigrationFailure(stdout, stderr);
           // Single transaction: the whole batch rolled back.
-          log.error("database migration failed — no migrations applied", { reason });
+          log.error("database migration failed — no migrations applied", { event: "db.migration_failed", reason });
           return reject(new Error(reason));
         }
         const applied = appliedMigrationNames(stdout);
-        if (applied.length > 0) log.info("database migrations applied", { migrations: applied });
-        else log.info("database schema up to date");
+        if (applied.length > 0) log.info("database migrations applied", { event: "db.migrations_applied", migrations: applied });
+        else log.info("database schema up to date", { event: "db.migrations_applied" });
         resolve(applied);
       },
     );

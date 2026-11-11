@@ -22,6 +22,9 @@ USER node
 # devDependencies the build needs. At runtime it makes the API refuse to start
 # without its secrets (src/lib/security-config.ts).
 ENV NODE_ENV=production
+# Stack traces (in logs and Sentry) point at the TypeScript source via the
+# .js.map files tsc emits, instead of compiled dist/ line numbers.
+ENV NODE_OPTIONS=--enable-source-maps
 ENV PORT=3001
 EXPOSE 3001
 CMD ["node", "apps/api/dist/index.js"]

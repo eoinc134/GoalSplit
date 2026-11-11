@@ -33,12 +33,12 @@ export function scheduleInfo(): { intervalMinutes: number; nextRunAt: string | n
 
 export async function runScheduledSync(): Promise<void> {
   const userId = await getCurrentUserId();
-  if (!userId) return log.info("scheduled sync skipped: no athlete connected");
+  if (!userId) return log.info("scheduled sync skipped: no athlete connected", { event: "scheduler.skipped" });
 
   const token = await getStoredToken(userId);
-  if (!token) return log.info("scheduled sync skipped: Strava not connected");
-  if (token.reauth_required_at) return log.warn("scheduled sync skipped: Strava needs reconnecting");
-  if (isSyncRunning("strava", userId)) return log.info("scheduled sync skipped: a Strava sync is already running");
+  if (!token) return log.info("scheduled sync skipped: Strava not connected", { event: "scheduler.skipped" });
+  if (token.reauth_required_at) return log.warn("scheduled sync skipped: Strava needs reconnecting", { event: "scheduler.skipped" });
+  if (isSyncRunning("strava", userId)) return log.info("scheduled sync skipped: a Strava sync is already running", { event: "scheduler.skipped" });
 
   try {
     await syncActivities(userId, { trigger: "scheduled" });
@@ -54,7 +54,7 @@ function scheduleNext(delayMs: number) {
   nextRunAt = new Date(Date.now() + delayMs);
   timer = setTimeout(() => {
     runScheduledSync()
-      .catch((err: unknown) => log.error("scheduled sync crashed", { err }))
+      .catch((err: unknown) => log.error("scheduled sync crashed", { event: "scheduler.crashed", err }))
       .finally(() => scheduleNext(scheduleIntervalMinutes() * 60 * 1000));
   }, delayMs);
   timer.unref();
@@ -63,11 +63,11 @@ function scheduleNext(delayMs: number) {
 export function startScheduler(): void {
   const minutes = scheduleIntervalMinutes();
   if (minutes === 0) {
-    log.info("scheduled sync disabled (SYNC_INTERVAL_MINUTES=0)");
+    log.info("scheduled sync disabled (SYNC_INTERVAL_MINUTES=0)", { event: "scheduler.disabled" });
     return;
   }
   scheduleNext(FIRST_RUN_DELAY_MS);
-  log.info("scheduled sync enabled", { intervalMinutes: minutes, firstRunAt: nextRunAt?.toISOString() });
+  log.info("scheduled sync enabled", { event: "scheduler.enabled", intervalMinutes: minutes, firstRunAt: nextRunAt?.toISOString() });
 }
 
 export function stopScheduler(): void {
