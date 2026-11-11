@@ -1,7 +1,7 @@
 """Builds notebooks/02a-speed-endurance.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_02a_speed_endurance.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\02a-speed-endurance.ipynb
+.venv\\Scripts\\python notebooks\\build_02a_speed_endurance.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\02a-speed-endurance.ipynb
 """
 
 from pathlib import Path
@@ -28,7 +28,6 @@ does their speed ceiling sit?
         """import sys
 sys.path.insert(0, "..")
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 

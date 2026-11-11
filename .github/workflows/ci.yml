@@ -42,6 +42,44 @@ jobs:
       - name: Test
         run: node_modules/.bin/turbo test
 
+  research:
+    name: Research (Python) — lint, format, tests, notebooks
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: research
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: research/requirements.lock
+
+      # Exact versions from the lock; no Jupyter — CI never executes notebooks
+      # (they need the personal dataset, which isn't in the repo).
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest ruff -c requirements.lock
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Tests
+        run: pytest
+
+      # Every committed notebook is exactly what its builder makes, and was
+      # executed cleanly top to bottom.
+      - name: Notebooks in sync and executed
+        run: python check_notebooks.py
+
   migrations:
     name: Apply migrations to an empty database
     runs-on: ubuntu-latest

@@ -1,7 +1,7 @@
 """Builds notebooks/01a-performance-index.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_01a_performance_index.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\01a-performance-index.ipynb
+.venv\\Scripts\\python notebooks\\build_01a_performance_index.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\01a-performance-index.ipynb
 """
 
 from pathlib import Path

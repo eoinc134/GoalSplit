@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 
 from goalsplit_research.fitness_fatigue import (
-    LoadTerms,
     Fit,
+    LoadTerms,
     fit_grid,
     impulse_series,
     moving_block_indices,
@@ -55,7 +55,7 @@ def test_vdot_matches_daniels_tables():
 
 
 def test_race_distance_prefers_the_title_over_gps():
-    from goalsplit_research.datasets import race_distance, official_time_from_name
+    from goalsplit_research.datasets import official_time_from_name, race_distance
 
     assert race_distance("Pisa 10k", 10_672.7) == (10_000.0, "name")
     assert race_distance("Firenze Half Marathon", 21_137.3) == (21_097.5, "name")

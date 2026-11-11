@@ -1,7 +1,7 @@
 """Builds notebooks/03-before-after.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_03_before_after.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1200 notebooks\\03-before-after.ipynb
+.venv\\Scripts\\python notebooks\\build_03_before_after.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1200 notebooks\\03-before-after.ipynb
 """
 
 from pathlib import Path
@@ -29,7 +29,6 @@ past periods, where nothing about the outcome is at stake."""
 import sys
 sys.path.insert(0, "..")
 
-import numpy as np
 import pandas as pd
 
 from goalsplit_research import data, limiters as L, study as S

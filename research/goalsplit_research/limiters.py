@@ -77,7 +77,7 @@ class Context:
     races: pd.DataFrame  # from datasets.road_races
 
     @classmethod
-    def at(cls, as_of, activities, daily, races) -> "Context":
+    def at(cls, as_of, activities, daily, races) -> Context:
         t = pd.Timestamp(as_of)
         return cls(
             as_of=t,
@@ -121,8 +121,13 @@ def riegel_exponent(races: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> d
             continue
         boots.append(np.linalg.lstsq(X[i], y[i], rcond=None)[0][1])
     lo, hi = np.percentile(boots, [2.5, 97.5])
-    return {"b": b, "ci_low": float(lo), "ci_high": float(hi), "n": len(r),
-            "distance_span_km": (r["distance_m"].min() / 1000, r["distance_m"].max() / 1000)}
+    return {
+        "b": b,
+        "ci_low": float(lo),
+        "ci_high": float(hi),
+        "n": len(r),
+        "distance_span_km": (r["distance_m"].min() / 1000, r["distance_m"].max() / 1000),
+    }
 
 
 def critical_speed(best_efforts: pd.DataFrame, as_of, days: int = YEAR_DAYS) -> dict | None:
@@ -130,7 +135,9 @@ def critical_speed(best_efforts: pd.DataFrame, as_of, days: int = YEAR_DAYS) -> 
     distance = CS·t + D′ (Jones et al. 2010), using the athlete's best effort at
     each standard distance lasting 2–20 minutes in the last year."""
     t = pd.Timestamp(as_of)
-    recent = best_efforts[(best_efforts["local_date"] <= t) & (best_efforts["local_date"] > t - pd.Timedelta(days=days))]
+    recent = best_efforts[
+        (best_efforts["local_date"] <= t) & (best_efforts["local_date"] > t - pd.Timedelta(days=days))
+    ]
     best = recent.loc[recent.groupby("effort")["elapsed_s"].idxmin()] if len(recent) else recent
     best = best[(best["elapsed_s"] >= 120) & (best["elapsed_s"] <= 1200)]
     if len(best) < 3:
@@ -139,8 +146,12 @@ def critical_speed(best_efforts: pd.DataFrame, as_of, days: int = YEAR_DAYS) -> 
     pred = slope * best["elapsed_s"] + intercept
     ss_res = float(((best["distance_m"] - pred) ** 2).sum())
     ss_tot = float(((best["distance_m"] - best["distance_m"].mean()) ** 2).sum())
-    return {"cs_m_s": float(slope), "d_prime_m": float(intercept), "r2": 1 - ss_res / ss_tot if ss_tot else 1.0,
-            "efforts": best[["effort", "elapsed_s"]].to_dict("records")}
+    return {
+        "cs_m_s": float(slope),
+        "d_prime_m": float(intercept),
+        "r2": 1 - ss_res / ss_tot if ss_tot else 1.0,
+        "efforts": best[["effort", "elapsed_s"]].to_dict("records"),
+    }
 
 
 # ── Limiters ────────────────────────────────────────────────────────────────
@@ -148,14 +159,20 @@ def critical_speed(best_efforts: pd.DataFrame, as_of, days: int = YEAR_DAYS) -> 
 
 def durability(ctx: Context, riegel: dict | None, params=PARAMS) -> Limiter:
     long_runs = ctx.last(YEAR_DAYS)
-    long_runs = long_runs[(long_runs["type"] == "Run") & (long_runs["movingTimeS"] >= MIN_LONG_RUN_MINUTES * 60)
-                          & long_runs["decouplingPct"].notna()]
+    long_runs = long_runs[
+        (long_runs["type"] == "Run")
+        & (long_runs["movingTimeS"] >= MIN_LONG_RUN_MINUTES * 60)
+        & long_runs["decouplingPct"].notna()
+    ]
     median_drift = float(long_runs["decouplingPct"].median()) if len(long_runs) else None
     s_drift = ramp(median_drift, *params["decoupling_pct"])
     s_riegel = ramp(riegel["b"], *params["riegel_endurance"]) if riegel else None
     confidence = min(1.0, len(long_runs) / 10) * 0.6 + (0.4 if riegel else 0.0)
     return Limiter(
-        "durability", "Aerobic durability", _mean([s_drift, s_riegel]), round(confidence, 2),
+        "durability",
+        "Aerobic durability",
+        _mean([s_drift, s_riegel]),
+        round(confidence, 2),
         {"median_drift_pct_90min_plus": median_drift, "long_runs": len(long_runs), "riegel_b": riegel and riegel["b"]},
         "More, and progressively longer, steady long runs; practise race fuelling on them.",
     )
@@ -165,7 +182,10 @@ def speed(ctx: Context, riegel: dict | None, params=PARAMS) -> Limiter:
     s = ramp(riegel["b"], *params["riegel_speed"]) if riegel else None
     confidence = min(1.0, riegel["n"] / 10) if riegel else 0.0
     return Limiter(
-        "speed", "Speed vs endurance balance", s, round(confidence, 2),
+        "speed",
+        "Speed vs endurance balance",
+        s,
+        round(confidence, 2),
         {"riegel_b": riegel and riegel["b"]},
         "Regular interval and threshold work; shorter races to sharpen speed.",
     )
@@ -187,9 +207,16 @@ def base(ctx: Context, event: str, params=PARAMS) -> Limiter:
     severity = _mean([ramp(ratio, *params["volume_ratio"]), ramp(share, *params["long_run_share"])])
     confidence = min(1.0, len(weekly_h) / 52)
     return Limiter(
-        "base", "Aerobic base and long runs", severity, round(confidence, 2),
-        {"weekly_hours_last_12wk": current, "best_12wk_weekly_hours": peak, "volume_ratio": ratio,
-         f"weeks_with_{LONG_RUN_MINUTES[event]}min_run": f"{long_weeks}/{RECENT_WEEKS}"},
+        "base",
+        "Aerobic base and long runs",
+        severity,
+        round(confidence, 2),
+        {
+            "weekly_hours_last_12wk": current,
+            "best_12wk_weekly_hours": peak,
+            "volume_ratio": ratio,
+            f"weeks_with_{LONG_RUN_MINUTES[event]}min_run": f"{long_weeks}/{RECENT_WEEKS}",
+        },
         f"Build steady weekly volume and a regular {LONG_RUN_MINUTES[event]}+ minute long run.",
     )
 
@@ -204,9 +231,15 @@ def intensity(ctx: Context, params=PARAMS) -> Limiter:
     low = (minutes[0] + minutes[1]) / total if total > 0 else None
     confidence = min(1.0, total / (RECENT_WEEKS * 180))  # ~3 h of HR time a week = full confidence
     return Limiter(
-        "intensity", "Intensity distribution", ramp(low, *params["low_intensity_share"]), round(confidence, 2),
-        {"low_share_z1_z2": low, "moderate_share_z3": minutes[2] / total if total else None,
-         "high_share_z4_z5": (minutes[3] + minutes[4]) / total if total else None},
+        "intensity",
+        "Intensity distribution",
+        ramp(low, *params["low_intensity_share"]),
+        round(confidence, 2),
+        {
+            "low_share_z1_z2": low,
+            "moderate_share_z3": minutes[2] / total if total else None,
+            "high_share_z4_z5": (minutes[3] + minutes[4]) / total if total else None,
+        },
         "Make easy days genuinely easy (Z1–2) so quality sessions can be harder.",
     )
 
@@ -241,14 +274,19 @@ def load_management(ctx: Context, params=PARAMS, exclude_races: bool = False) ->
         race_weeks = {d - pd.Timedelta(days=d.dayofweek) for d in race_window_days(ctx)}
         weekly = weekly[~weekly.index.isin(list(race_weeks))]
     cv = float(weekly.std() / weekly.mean()) if len(weekly) > 4 and weekly.mean() > 0 else None
-    severity = _mean([
-        ramp(breaks, *params["breaks_per_year"]),
-        ramp(spike_share, *params["acwr_spike_share"]),
-        ramp(cv, *params["weekly_load_cv"]),
-    ])
+    severity = _mean(
+        [
+            ramp(breaks, *params["breaks_per_year"]),
+            ramp(spike_share, *params["acwr_spike_share"]),
+            ramp(cv, *params["weekly_load_cv"]),
+        ]
+    )
     confidence = min(1.0, len(daily) / YEAR_DAYS)
     return Limiter(
-        "load", "Load management and consistency", severity, round(confidence, 2),
+        "load",
+        "Load management and consistency",
+        severity,
+        round(confidence, 2),
         {"breaks_14d_plus": breaks, "acwr_spike_day_share": spike_share, "weekly_load_cv": cv},
         "Steadier weeks: avoid big jumps (ACWR > 1.5), plan deloads instead of forced breaks.",
     )
@@ -269,15 +307,21 @@ def assess(ctx: Context, params=PARAMS, exclude_races: bool = False, riegel=_UNS
         intensity(ctx, params),
         load_management(ctx, params, exclude_races),
     ]
-    return {event: shared + [base(ctx, event, params)] for event in EVENTS}
+    return {event: [*shared, base(ctx, event, params)] for event in EVENTS}
 
 
 def rank(limiters: list[Limiter], event: str, relevance=RELEVANCE) -> pd.DataFrame:
-    rows = [{
-        "limiter": l.label, "key": l.key, "severity": l.severity, "relevance": relevance[event][l.key],
-        "score": None if l.severity is None else l.severity * relevance[event][l.key],
-        "confidence": l.confidence,
-    } for l in limiters]
+    rows = [
+        {
+            "limiter": l.label,
+            "key": l.key,
+            "severity": l.severity,
+            "relevance": relevance[event][l.key],
+            "score": None if l.severity is None else l.severity * relevance[event][l.key],
+            "confidence": l.confidence,
+        }
+        for l in limiters
+    ]
     df = pd.DataFrame(rows)
     return df.sort_values("score", ascending=False, na_position="last").reset_index(drop=True)
 
@@ -293,7 +337,9 @@ def perturbed(rng: np.random.Generator, spread: float = 0.2):
     for k, (zero, one) in PARAMS.items():
         width = abs(one - zero)
         params[k] = (zero + rng.uniform(-spread, spread) * width, one + rng.uniform(-spread, spread) * width)
-    relevance = {e: {k: min(1.0, w * rng.uniform(1 - spread, 1 + spread)) for k, w in ws.items()} for e, ws in RELEVANCE.items()}
+    relevance = {
+        e: {k: min(1.0, w * rng.uniform(1 - spread, 1 + spread)) for k, w in ws.items()} for e, ws in RELEVANCE.items()
+    }
     return params, relevance
 
 

@@ -1,7 +1,7 @@
 """Builds notebooks/01c-dose-response.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_01c_dose_response.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\01c-dose-response.ipynb
+.venv\\Scripts\\python notebooks\\build_01c_dose_response.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\01c-dose-response.ipynb
 """
 
 from pathlib import Path

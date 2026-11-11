@@ -1,0 +1,20 @@
+# Everything for working on research/: the code's own requirements plus
+# tests, linting/formatting, git hooks and Jupyter. Install with the lock
+# file so you get the versions CI uses:
+#
+#   pip install -r requirements-dev.txt -c requirements.lock
+
+-r requirements.txt
+
+# Tests
+pytest>=8.0
+
+# Lint + format (same version as the pre-commit hook in ../.pre-commit-config.yaml)
+ruff==0.17.2
+
+# Git hooks: ruff and the notebook check on every commit
+pre-commit==4.7.0
+
+# Running and executing notebooks
+jupyterlab>=4.2
+nbconvert>=7.16

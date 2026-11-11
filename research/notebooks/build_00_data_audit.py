@@ -1,7 +1,7 @@
 """Builds notebooks/00-data-audit.ipynb. Edit the cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_00_data_audit.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\00-data-audit.ipynb
+.venv\\Scripts\\python notebooks\\build_00_data_audit.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\00-data-audit.ipynb
 """
 
 from pathlib import Path
@@ -31,7 +31,6 @@ database (raw best efforts), taken with `scripts/research-snapshot.ps1`."""
         """import sys
 sys.path.insert(0, "..")
 
-import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

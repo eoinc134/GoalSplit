@@ -1,7 +1,7 @@
 """Builds notebooks/01b-fitness-fatigue-fit.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_01b_fitness_fatigue_fit.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1800 notebooks\\01b-fitness-fatigue-fit.ipynb
+.venv\\Scripts\\python notebooks\\build_01b_fitness_fatigue_fit.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1800 notebooks\\01b-fitness-fatigue-fit.ipynb
 """
 
 from pathlib import Path

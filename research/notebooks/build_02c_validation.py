@@ -1,7 +1,7 @@
 """Builds notebooks/02c-validation.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_02c_validation.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1800 notebooks\\02c-validation.ipynb
+.venv\\Scripts\\python notebooks\\build_02c_validation.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=1800 notebooks\\02c-validation.ipynb
 """
 
 from pathlib import Path

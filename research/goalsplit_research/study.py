@@ -152,11 +152,13 @@ def window_load_severity(breaks: int, days: int, spike_share, cv, params=L.PARAM
     Breaks are annualised to stay on the per-year ramp. Only comparable with other
     13-week windows: a shorter window mechanically shows less weekly variation."""
     annual_breaks = breaks * L.YEAR_DAYS / days if days else None
-    return _mean([
-        L.ramp(annual_breaks, *params["breaks_per_year"]),
-        L.ramp(spike_share, *params["acwr_spike_share"]),
-        L.ramp(cv, *params["weekly_load_cv"]),
-    ])
+    return _mean(
+        [
+            L.ramp(annual_breaks, *params["breaks_per_year"]),
+            L.ramp(spike_share, *params["acwr_spike_share"]),
+            L.ramp(cv, *params["weekly_load_cv"]),
+        ]
+    )
 
 
 def _cv(values: pd.Series) -> float | None:
@@ -193,7 +195,7 @@ def window_metrics(acts: pd.DataFrame, daily: pd.DataFrame, races: pd.DataFrame,
 
     long_runs = runs[(runs["movingTimeS"] >= L.MIN_LONG_RUN_MINUTES * 60) & runs["decouplingPct"].notna()]
     first = weeks["km"].iloc[:BUILD_FIRST_WEEKS].mean()
-    later = weeks["km"].iloc[BUILD_FROM_WEEK - 1:].rolling(BUILD_FIRST_WEEKS).mean().max()
+    later = weeks["km"].iloc[BUILD_FROM_WEEK - 1 :].rolling(BUILD_FIRST_WEEKS).mean().max()
     z2_seconds = runs["z2Seconds"].fillna(0).sum()
     z2_metres = runs["z2GapDistanceM"].fillna(0).sum()
     ratio = weeks["km_vs_trailing"]
@@ -279,13 +281,16 @@ def forecasts(models: dict, runs: pd.DataFrame, terms: LoadTerms) -> pd.DataFram
     A = np.column_stack([np.ones(len(runs)), X])
     covariates = A @ np.array(models["covariates"])
     single = np.column_stack([A, terms.at(models["single_term"]["tau"], idx)]) @ np.array(models["single_term"]["coef"])
-    return pd.DataFrame({
-        "Covariates only": covariates,
-        "Recent form": covariates + models["recent_form"],
-        f"One load term (τ={SINGLE_TERM_TAU:.0f})": single,
-        "Fitness–fatigue 42/7": predict(_fit_from(models["default"]), terms, idx, X),
-        "Fitness–fatigue fitted": predict(_fit_from(models["fitted"]), terms, idx, X),
-    }, index=runs.index)
+    return pd.DataFrame(
+        {
+            "Covariates only": covariates,
+            "Recent form": covariates + models["recent_form"],
+            f"One load term (τ={SINGLE_TERM_TAU:.0f})": single,
+            "Fitness–fatigue 42/7": predict(_fit_from(models["default"]), terms, idx, X),
+            "Fitness–fatigue fitted": predict(_fit_from(models["fitted"]), terms, idx, X),
+        },
+        index=runs.index,
+    )
 
 
 def _resample_weeks(weeks: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -307,8 +312,16 @@ def forecast_skill(preds: pd.DataFrame, actual: pd.Series, weeks: pd.Series, see
         diff = e - ref
         boots = [diff[_resample_weeks(week_values, rng)].mean() for _ in range(N_BOOT)]
         lo, hi = np.percentile(boots, [2.5, 97.5])
-        rows.append({"model": model, "rmse": float(np.sqrt(e.mean())), "bias": float((actual - preds[model]).mean()),
-                     "skill_vs_covariates": 1 - e.mean() / ref.mean(), "delta_mse_low": float(lo), "delta_mse_high": float(hi)})
+        rows.append(
+            {
+                "model": model,
+                "rmse": float(np.sqrt(e.mean())),
+                "bias": float((actual - preds[model]).mean()),
+                "skill_vs_covariates": 1 - e.mean() / ref.mean(),
+                "delta_mse_low": float(lo),
+                "delta_mse_high": float(hi),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -348,11 +361,18 @@ def dose_response(runs: pd.DataFrame, daily: pd.DataFrame) -> dict:
     after_break = _after_break_flags(usable, daily)
 
     def fit(frame: pd.DataFrame) -> dict:
-        model = sm.OLS(frame["resid_ef"], sm.add_constant(frame[cols])).fit(cov_type="HAC", cov_kwds={"maxlags": DOSE_LAGS})
+        model = sm.OLS(frame["resid_ef"], sm.add_constant(frame[cols])).fit(
+            cov_type="HAC", cov_kwds={"maxlags": DOSE_LAGS}
+        )
         test = model.t_test("load_w1 + load_w2 = 0")
         low, high = test.conf_int()[0]
-        return {"effect_per_100_trimp": float(model.params[["load_w1", "load_w2"]].sum()), "ci_low": float(low),
-                "ci_high": float(high), "p": float(test.pvalue), "n": len(frame)}
+        return {
+            "effect_per_100_trimp": float(model.params[["load_w1", "load_w2"]].sum()),
+            "ci_low": float(low),
+            "ci_high": float(high),
+            "p": float(test.pvalue),
+            "n": len(frame),
+        }
 
     return {"all_runs": fit(usable), "excluding_post_break": fit(usable[~after_break])}
 
@@ -362,11 +382,16 @@ def _level(residual: pd.Series, weeks: pd.Series, rng: np.random.Generator) -> d
     if n < MIN_RUNS_FOR_LEVEL:
         return {"n": n, "mean": None, "boots": None}
     values, week_values = residual.to_numpy(), weeks.to_numpy()
-    return {"n": n, "mean": float(values.mean()),
-            "boots": np.array([values[_resample_weeks(week_values, rng)].mean() for _ in range(N_BOOT)])}
+    return {
+        "n": n,
+        "mean": float(values.mean()),
+        "boots": np.array([values[_resample_weeks(week_values, rng)].mean() for _ in range(N_BOOT)]),
+    }
 
 
-def efficiency_change(models: dict, dose_effect: float, runs: pd.DataFrame, daily: pd.DataFrame, study: Study, seed: int = 0) -> dict:
+def efficiency_change(
+    models: dict, dose_effect: float, runs: pd.DataFrame, daily: pd.DataFrame, study: Study, seed: int = 0
+) -> dict:
     """Did efficiency change, net of duration, intensity and terrain, by as much as the load change predicts?
 
     Levels are residuals from the frozen covariates, and `dose_effect` is the frozen
@@ -418,8 +443,15 @@ def efficiency_change(models: dict, dose_effect: float, runs: pd.DataFrame, dail
     net = rest - season_rest if rest is not None and season_rest is not None else None
     net_boots = rest_boots - season_rest_boots if net is not None else None
     return {
-        "levels": {name: {k: v for k, v in lv.items() if k != "boots"} for name, lv in
-                   [("study", during), ("before", before), ("same_season", season), ("before_same_season", season_before)]},
+        "levels": {
+            name: {k: v for k, v in lv.items() if k != "boots"}
+            for name, lv in [
+                ("study", during),
+                ("before", before),
+                ("same_season", season),
+                ("before_same_season", season_before),
+            ]
+        },
         "change": summary(change, change_boots),
         "predicted_from_load": predicted,
         "unexplained_by_load": summary(rest, rest_boots),
@@ -440,8 +472,10 @@ def bottleneck(acts: pd.DataFrame, daily: pd.DataFrame, races: pd.DataFrame, as_
 
     def ranked(exclude_races: bool) -> dict:
         result = L.assess(ctx, exclude_races=exclude_races, riegel=riegel)
-        return {event: L.rank(result[event], event)[["key", "severity", "score", "confidence"]].to_dict("records")
-                for event in L.EVENTS}
+        return {
+            event: L.rank(result[event], event)[["key", "severity", "score", "confidence"]].to_dict("records")
+            for event in L.EVENTS
+        }
 
     rng = np.random.default_rng(seed)
     base_ranking = ranked(False)
@@ -499,7 +533,9 @@ def plan_week_loads(level: float, weeks: int = 13) -> list[float]:
     return [level * (1 + 0.015 * w) * pattern[w % 4] for w in range(weeks)]
 
 
-def rolling_window_floor(acts: pd.DataFrame, daily: pd.DataFrame, races: pd.DataFrame, study: Study, level: float) -> dict:
+def rolling_window_floor(
+    acts: pd.DataFrame, daily: pd.DataFrame, races: pd.DataFrame, study: Study, level: float
+) -> dict:
     """Where the 12-month load score lands by the study's end under a textbook plan,
     and under that plan with a 4-week break. Old breaks and spikes leave the window
     whatever happens, so this separates what time does from what the training earns."""
@@ -522,23 +558,38 @@ def race_rows(races: pd.DataFrame, acts: pd.DataFrame, start=None, end=None) -> 
     r = races.merge(acts[["id", "paceFadePct", "decouplingPct"]], on="id", how="left")
     if start is not None:
         r = r[(r["localDate"] >= pd.Timestamp(start)) & (r["localDate"] <= pd.Timestamp(end))]
-    return [{"date": str(row["localDate"].date()), "name": row["name"], "distance_m": row["distance_m"],
-             "time_s": row["time_s"], "vdot": float(row["vdot"]),
-             "fade_pct": None if pd.isna(row["paceFadePct"]) else float(row["paceFadePct"]),
-             "drift_pct": None if pd.isna(row["decouplingPct"]) else float(row["decouplingPct"])}
-            for _, row in r.iterrows()]
+    return [
+        {
+            "date": str(row["localDate"].date()),
+            "name": row["name"],
+            "distance_m": row["distance_m"],
+            "time_s": row["time_s"],
+            "vdot": float(row["vdot"]),
+            "fade_pct": None if pd.isna(row["paceFadePct"]) else float(row["paceFadePct"]),
+            "drift_pct": None if pd.isna(row["decouplingPct"]) else float(row["decouplingPct"]),
+        }
+        for _, row in r.iterrows()
+    ]
 
 
 def recovery_metrics(garmin: pd.DataFrame, start, end) -> dict:
     g = garmin[(garmin["day"] >= pd.Timestamp(start)) & (garmin["day"] <= pd.Timestamp(end))]
+
     def stat(col: str) -> tuple[float | None, int]:
         values = g[col].dropna() if col in g else pd.Series(dtype=float)
         return (float(values.mean()) if len(values) else None, len(values))
+
     rhr, rhr_n = stat("resting_heart_rate")
     sleep, sleep_n = stat("sleep_duration_hours")
     stress, stress_n = stat("avg_stress_level")
-    return {"resting_hr": rhr, "resting_hr_days": rhr_n, "sleep_hours": sleep, "sleep_days": sleep_n,
-            "stress": stress, "stress_days": stress_n}
+    return {
+        "resting_hr": rhr,
+        "resting_hr_days": rhr_n,
+        "sleep_hours": sleep,
+        "sleep_days": sleep_n,
+        "stress": stress,
+        "stress_days": stress_n,
+    }
 
 
 # ── Freeze and follow up ────────────────────────────────────────────────────
@@ -554,7 +605,7 @@ class Frames:
     terms: LoadTerms
 
     @classmethod
-    def build(cls, dataset: dict, physiology: dict | None = None) -> "Frames":
+    def build(cls, dataset: dict, physiology: dict | None = None) -> Frames:
         """`physiology` pins HRmax and resting HR for the intensity covariate, so a
         follow-up doesn't move the frozen covariates if the app's values have changed."""
         acts = activities_frame(dataset)
@@ -570,7 +621,10 @@ def freeze(dataset: dict, garmin: pd.DataFrame, study: Study) -> dict:
     f = Frames.build(frozen)
     first_day = f.daily.index.min()
     blocks = study.reference_blocks(first_day)
-    block_rows = [{"start": str(s.date()), "end": str(e.date()), **window_metrics(f.acts, f.daily, f.races, s, e)} for s, e in blocks]
+    block_rows = [
+        {"start": str(s.date()), "end": str(e.date()), **window_metrics(f.acts, f.daily, f.races, s, e)}
+        for s, e in blocks
+    ]
     recent_level = float(window_metrics(f.acts, f.daily, f.races, *study.before)["load_per_week"])
     train = f.runs[f.runs["localDate"] <= pd.Timestamp(study.freeze)]
     models = fit_models(f.runs, f.terms, study.freeze)
@@ -578,14 +632,30 @@ def freeze(dataset: dict, garmin: pd.DataFrame, study: Study) -> dict:
     p = frozen["physiology"]
     last_year = (pd.Timestamp(study.freeze) - pd.Timedelta(days=L.YEAR_DAYS), study.freeze)
     return {
-        "study": {"freeze": study.freeze, "start": study.start, "end": str(study.window[1].date()), "weeks": study.weeks,
-                  "before": [str(d.date()) for d in study.before], "same_season": [str(d.date()) for d in study.same_season],
-                  "before_same_season": [str(d.date()) for d in study.before_same_season]},
-        "data": {"generated_at": dataset.get("generatedAt"), "metrics_version": dataset.get("metricsVersion"),
-                 "activities": len(frozen["activities"]), "days": len(frozen["daily"]), "runs_in_models": len(train),
-                 "road_races": len(f.races)},
-        "physiology": {"hrMax": p["hrMax"], "hrRest": p["hrRest"], "hrRestSource": p.get("hrRestSource"),
-                       "trimpCoefficient": p.get("trimpCoefficient"), "z2Band": frozen.get("z2Band")},
+        "study": {
+            "freeze": study.freeze,
+            "start": study.start,
+            "end": str(study.window[1].date()),
+            "weeks": study.weeks,
+            "before": [str(d.date()) for d in study.before],
+            "same_season": [str(d.date()) for d in study.same_season],
+            "before_same_season": [str(d.date()) for d in study.before_same_season],
+        },
+        "data": {
+            "generated_at": dataset.get("generatedAt"),
+            "metrics_version": dataset.get("metricsVersion"),
+            "activities": len(frozen["activities"]),
+            "days": len(frozen["daily"]),
+            "runs_in_models": len(train),
+            "road_races": len(f.races),
+        },
+        "physiology": {
+            "hrMax": p["hrMax"],
+            "hrRest": p["hrRest"],
+            "hrRestSource": p.get("hrRestSource"),
+            "trimpCoefficient": p.get("trimpCoefficient"),
+            "z2Band": frozen.get("z2Band"),
+        },
         "windows": {"reference_blocks": block_rows},
         "models": models,
         "dose_response": dose,
@@ -593,8 +663,10 @@ def freeze(dataset: dict, garmin: pd.DataFrame, study: Study) -> dict:
         "bottleneck": bottleneck(f.acts, f.daily, f.races, study.freeze),
         "window_floor": rolling_window_floor(f.acts, f.daily, f.races, study, recent_level),
         "races": race_rows(f.races, f.acts),
-        "recovery": {"before": recovery_metrics(garmin, *study.before),
-                     "last_12_months": recovery_metrics(garmin, *last_year)},
+        "recovery": {
+            "before": recovery_metrics(garmin, *study.before),
+            "last_12_months": recovery_metrics(garmin, *last_year),
+        },
     }
 
 
@@ -627,17 +699,20 @@ def follow_up(baseline: dict, dataset: dict, garmin: pd.DataFrame, study: Study)
     # Same rows, recomputed now: differences show the app's metrics moved under the study.
     frozen_blocks = {b["start"]: b for b in baseline["windows"]["reference_blocks"]}
     frozen_before = frozen_blocks[str(study.before[0].date())]
-    drift = {key: metrics["before"][key] - frozen_before[key]
-             for key in ("load_per_week", "low_share", "z2_gap_pace_s_per_km")
-             if metrics["before"][key] is not None and frozen_before[key] is not None}
+    drift = {
+        key: metrics["before"][key] - frozen_before[key]
+        for key in ("load_per_week", "low_share", "z2_gap_pace_s_per_km")
+        if metrics["before"][key] is not None and frozen_before[key] is not None
+    }
     return {
         "metrics": metrics,
         "adherence": adherence(metrics["study"]),
         "followed_plan": followed_plan(adherence(metrics["study"])),
         "forecast": forecast_skill(preds, held_out["ef"], held_out["week"]) if len(held_out) else None,
         "held_out_runs": len(held_out),
-        "efficiency": efficiency_change(baseline["models"], baseline["dose_response"]["all_runs"]["effect_per_100_trimp"],
-                                        f.runs, f.daily, study),
+        "efficiency": efficiency_change(
+            baseline["models"], baseline["dose_response"]["all_runs"]["effect_per_100_trimp"], f.runs, f.daily, study
+        ),
         "refit": {"models": fit_models(f.runs, f.terms, end), "dose_response": dose_response(f.runs, f.daily)},
         "bottleneck": bottleneck(f.acts, f.daily, f.races, end),
         "races": race_rows(f.races, f.acts, study.window[0], end),

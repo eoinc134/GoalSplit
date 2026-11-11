@@ -1,0 +1,30 @@
+# Git hooks, run on every commit. Install once per clone (from research/'s venv):
+#
+#   pre-commit install
+#
+# Only research/ (Python) is covered so far; the TypeScript apps are linted in
+# CI. Run against everything with `pre-commit run --all-files`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2 # keep in step with research/requirements-dev.txt
+    hooks:
+      # Fixes what it safely can (import order, unused imports, …), then
+      # formats. If either changes a file the commit stops so you can review
+      # and re-add it. Config: research/pyproject.toml.
+      - id: ruff-check
+        args: [--fix]
+        files: ^research/
+      - id: ruff-format
+        files: ^research/
+
+  - repo: local
+    hooks:
+      # Edited a builder or a notebook? They must still match, and the
+      # notebook must be freshly executed. See research/check_notebooks.py.
+      - id: notebooks-in-sync
+        name: research notebooks match their builders
+        entry: python research/check_notebooks.py
+        language: python
+        additional_dependencies: ["nbformat==5.11.1"]
+        files: ^research/(notebooks/|check_notebooks\.py)
+        pass_filenames: false

@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 import numpy as np
 import pandas as pd
 
@@ -11,10 +13,30 @@ def weeks_of_runs(km_by_week, start="2026-01-05", long_run_min=90):
         monday = pd.Timestamp(start) + pd.Timedelta(weeks=w)
         if km <= 0:
             continue
-        rows.append({"localDate": monday + pd.Timedelta(days=5), "distanceM": km * 600.0, "movingTimeS": long_run_min * 60,
-                     "runClass": "long", "zoneMinutes": [{"minutes": long_run_min}, {"minutes": 0}, {"minutes": 0}, {"minutes": 0}, {"minutes": 0}]})
-        rows.append({"localDate": monday + pd.Timedelta(days=1), "distanceM": km * 400.0, "movingTimeS": 3000,
-                     "runClass": "workout", "zoneMinutes": [{"minutes": 10}, {"minutes": 25}, {"minutes": 15}, {"minutes": 0}, {"minutes": 0}]})
+        rows.append(
+            {
+                "localDate": monday + pd.Timedelta(days=5),
+                "distanceM": km * 600.0,
+                "movingTimeS": long_run_min * 60,
+                "runClass": "long",
+                "zoneMinutes": [
+                    {"minutes": long_run_min},
+                    {"minutes": 0},
+                    {"minutes": 0},
+                    {"minutes": 0},
+                    {"minutes": 0},
+                ],
+            }
+        )
+        rows.append(
+            {
+                "localDate": monday + pd.Timedelta(days=1),
+                "distanceM": km * 400.0,
+                "movingTimeS": 3000,
+                "runClass": "workout",
+                "zoneMinutes": [{"minutes": 10}, {"minutes": 25}, {"minutes": 15}, {"minutes": 0}, {"minutes": 0}],
+            }
+        )
     a = pd.DataFrame(rows).sort_values("localDate").reset_index(drop=True)
     a["type"] = "Run"
     a["week"] = a["localDate"].dt.to_period("W-SUN").dt.start_time
@@ -47,7 +69,8 @@ def test_study_windows_are_whole_weeks_and_do_not_overlap():
     assert (start - s.same_season[0]).days == 364
     blocks = s.reference_blocks(pd.Timestamp("2024-02-06"))
     assert blocks[0] == s.before
-    assert all(a[0] > b[1] for a, b in zip(blocks, blocks[1:]))
+    # Blocks run back in time from the study: each starts after the next one ends.
+    assert all(newer[0] > older[1] for newer, older in pairwise(blocks))
     assert all(b[0] >= pd.Timestamp("2024-02-06") for b in blocks)
 
 
@@ -111,8 +134,11 @@ def test_forecast_skill_rewards_the_better_model():
 
 
 def test_truncate_hides_the_future():
-    ds = {"today": "2026-02-01", "daily": [{"date": "2026-01-01"}, {"date": "2026-01-20"}],
-          "activities": [{"localDate": "2026-01-01"}, {"localDate": "2026-01-20T10:00:00"}]}
+    ds = {
+        "today": "2026-02-01",
+        "daily": [{"date": "2026-01-01"}, {"date": "2026-01-20"}],
+        "activities": [{"localDate": "2026-01-01"}, {"localDate": "2026-01-20T10:00:00"}],
+    }
     out = S.truncate(ds, "2026-01-10")
     assert len(out["daily"]) == 1 and len(out["activities"]) == 1 and out["today"] == "2026-01-10"
     assert len(ds["daily"]) == 2

@@ -79,15 +79,62 @@ cd apps/api; npx tsx src/index.ts
 
 # 3. Python environment
 cd research
-python -m venv .venv
+python -m venv .venv            # Python 3.13, as in CI
 .venv\Scripts\activate          # Windows; use `source .venv/bin/activate` elsewhere
-pip install -r requirements.txt
+pip install -r requirements-dev.txt -c requirements.lock
 copy .env.example .env          # then fill in the snapshot password
+pre-commit install              # once per clone: lint, format and notebook checks on commit
 jupyter lab
 ```
 
 `goalsplit_research.config` refuses a `DATABASE_URL` that points at Railway, so a
 notebook can't accidentally run against production.
+
+## Development
+
+**Checks.** CI (`research` job in `.github/workflows/ci.yml`) runs these on every
+push, and the git hook runs the relevant ones on each commit:
+
+```sh
+ruff check .                # lint (config: pyproject.toml)
+ruff format .               # format; CI runs `ruff format --check .`
+pytest                      # tests/ — synthetic data only, no database or API
+python check_notebooks.py   # notebooks match their builders and were executed cleanly
+```
+
+**Changing a notebook.** Notebooks are generated, so edit the builder, never the `.ipynb`:
+
+```sh
+python notebooks\build_02b_limiter_scores.py
+jupyter nbconvert --to notebook --execute --inplace notebooks\02b-limiter-scores.ipynb
+python check_notebooks.py
+```
+
+Executing needs the local dataset (`research/data/`), so it can't run in CI.
+`check_notebooks.py` checks what it can instead:
+
+- every `.ipynb` is exactly what its builder produces (catches hand edits in Jupyter,
+  and builders edited but not re-run);
+- every code cell ran once, top to bottom in one run (catches rebuilt-but-not-executed
+  and out-of-order runs);
+- no cell has an error output;
+- every notebook has a builder.
+
+Ruff lints the notebooks' code too, but only for real errors (undefined names, unused
+imports, likely bugs), and never reformats them. Their style lives in the builders.
+
+**Dependencies.** `requirements.txt` lists what the code needs, `requirements-dev.txt`
+adds tooling, and `requirements.lock` pins the exact versions CI installs. After adding
+or upgrading a package:
+
+```sh
+pip install -r requirements-dev.txt --upgrade
+pip freeze --exclude-editable > requirements.lock   # then restore the header comment
+pytest && python check_notebooks.py
+```
+
+Keep `ruff`'s version in `requirements-dev.txt` and `rev:` in `../.pre-commit-config.yaml`
+the same.
 
 ## Ground rules
 

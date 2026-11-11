@@ -1,3 +1,7 @@
+# What goalsplit_research, the notebooks and their builders need.
+# Development tools are in requirements-dev.txt; exact versions in
+# requirements.lock (see README.md → "Development").
+
 # Analysis
 pandas>=2.2
 numpy>=1.26
@@ -10,9 +14,6 @@ psycopg[binary]>=3.1
 python-dotenv>=1.0
 requests>=2.32
 
-# Notebooks and plots
-jupyterlab>=4.2
+# Plots, and building notebooks (notebooks/build_*.py)
 matplotlib>=3.9
-
-# Tests
-pytest>=8.0
+nbformat>=5.10

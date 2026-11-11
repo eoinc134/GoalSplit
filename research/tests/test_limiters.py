@@ -24,11 +24,15 @@ def test_ramp_handles_both_directions_and_clips():
 def races_with_exponent(b: float) -> pd.DataFrame:
     dists = np.array([5000, 10000, 21097.5, 42195, 5000, 10000])
     base_t = 1200 * (dists / 5000) ** b
-    return pd.DataFrame({
-        "localDate": pd.to_datetime(["2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01", "2025-07-01", "2025-08-01"]),
-        "distance_m": dists,
-        "time_s": base_t,
-    })
+    return pd.DataFrame(
+        {
+            "localDate": pd.to_datetime(
+                ["2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01", "2025-07-01", "2025-08-01"]
+            ),
+            "distance_m": dists,
+            "time_s": base_t,
+        }
+    )
 
 
 def test_riegel_recovers_a_known_exponent():
@@ -44,11 +48,13 @@ def test_riegel_needs_enough_distinct_distances():
 
 def test_critical_speed_fits_the_linear_distance_time_model():
     cs, dprime = 4.0, 200.0
-    efforts = pd.DataFrame({
-        "effort": ["1K", "1 mile", "2 mile", "5K"],
-        "distance_m": [1000.0, 1609.0, 3219.0, 5000.0],
-        "local_date": pd.to_datetime(["2026-06-01"] * 4),
-    })
+    efforts = pd.DataFrame(
+        {
+            "effort": ["1K", "1 mile", "2 mile", "5K"],
+            "distance_m": [1000.0, 1609.0, 3219.0, 5000.0],
+            "local_date": pd.to_datetime(["2026-06-01"] * 4),
+        }
+    )
     efforts["elapsed_s"] = (efforts["distance_m"] - dprime) / cs
     fit = critical_speed(efforts, "2026-10-01")
     assert abs(fit["cs_m_s"] - cs) < 1e-6
@@ -79,11 +85,15 @@ def synthetic_context(consistent: bool) -> Context:
     runs = []
     for d, l in zip(days, load):
         if l > 0:
-            runs.append({
-                "localDate": d, "type": "Run", "movingTimeS": 3600 * (2 if d.dayofweek == 6 else 1),
-                "decouplingPct": 4.0 if d.dayofweek == 6 else None,
-                "zoneMinutes": [{"zone": z, "minutes": m} for z, m in zip(range(1, 6), [40, 30, 10, 5, 0])],
-            })
+            runs.append(
+                {
+                    "localDate": d,
+                    "type": "Run",
+                    "movingTimeS": 3600 * (2 if d.dayofweek == 6 else 1),
+                    "decouplingPct": 4.0 if d.dayofweek == 6 else None,
+                    "zoneMinutes": [{"zone": z, "minutes": m} for z, m in zip(range(1, 6), [40, 30, 10, 5, 0])],
+                }
+            )
     acts = pd.DataFrame(runs)
     acts["week"] = acts["localDate"].dt.to_period("W-SUN").dt.start_time
     return Context.at("2026-09-30", acts, daily, races_with_exponent(1.06))

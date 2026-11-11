@@ -1,7 +1,7 @@
 """Builds notebooks/02b-limiter-scores.ipynb. Edit cells here, then run:
 
-    .venv\\Scripts\\python notebooks\\build_02b_limiter_scores.py
-    .venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\02b-limiter-scores.ipynb
+.venv\\Scripts\\python notebooks\\build_02b_limiter_scores.py
+.venv\\Scripts\\jupyter nbconvert --to notebook --execute --inplace notebooks\\02b-limiter-scores.ipynb
 """
 
 from pathlib import Path
