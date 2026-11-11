@@ -208,6 +208,26 @@ web `/api/health/live`), see [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ## API
 
+Every JSON endpoint answers in one shape (types in `packages/types`: `ApiSuccess`,
+`ApiList`, `ApiErrorBody`):
+
+- **Success:** `{ data }`. Lists: `{ data: [...], total }`.
+- **Failure:** `{ error, code, statusCode }`. `error` is a sentence the UI can show as-is;
+  `code` (`NOT_FOUND`, `NOT_CONNECTED`, `SYNC_IN_PROGRESS`, …) is what clients branch on,
+  never the message text. Build these with `sendError` in `apps/api/src/lib/api-errors.ts`.
+- **No athlete connected:** reads answer with empty data, and actions answer
+  `401 NOT_CONNECTED`.
+
+In the web app:
+
+- **Browser code:** `api` (`lib/api.ts`) unwraps `data` and throws `ApiError` (`status`,
+  `code`, message).
+- **Server components:** `load()` / `loadList()` (`lib/server-api.ts`) return
+  `{ data, error }`, so a page renders an error state for the section that failed instead
+  of showing a fallback as if it were real data.
+- **Shared UI states:** `EmptyState`, `ErrorState`, `LoadErrorBanner` and `Skeleton`
+  live in `components/states.tsx`.
+
 | Method | Path | Returns |
 |---|---|---|
 | `GET` | `/api/training/load?days=28–365` | TRIMP, CTL/ATL/TSB, EWMA ACWR, weekly monotony/strain |

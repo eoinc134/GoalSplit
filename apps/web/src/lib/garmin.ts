@@ -1,6 +1,4 @@
-import type { GarminDayPoint, GarminDaysResponse } from "@goalsplit/types";
-
-export const GARMIN_FALLBACK: GarminDaysResponse = { days: [], latestDay: null, lastSyncedAt: null };
+import type { GarminDayPoint } from "@goalsplit/types";
 
 type NumericField = {
   [K in keyof GarminDayPoint]: GarminDayPoint[K] extends number | null ? K : never;

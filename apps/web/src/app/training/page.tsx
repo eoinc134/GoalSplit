@@ -10,7 +10,8 @@ import { EfficiencyChart, PaceAtHrChart } from "@/components/efficiency-charts";
 import { DurabilityTable, LongRunsTable } from "@/components/long-runs-table";
 import { ChangeList, PhasesTable } from "@/components/change-points";
 import { StreamsBackfillPrompt } from "@/components/streams-backfill-prompt";
-import { serverFetch } from "@/lib/server-api";
+import { LoadErrorBanner, Loadable } from "@/components/states";
+import { failures, load as loadApi, type LoadError } from "@/lib/server-api";
 import { METHODS_URL } from "@/lib/constants";
 import { formatPace } from "@/lib/format";
 import {
@@ -21,7 +22,7 @@ import {
   LOAD_FALLBACK,
   LONG_RUNS_FALLBACK,
   TRENDS_FALLBACK,
-} from "@/lib/analytics-fallbacks";
+} from "@/lib/fallbacks";
 import type {
   AthletePhysiology,
   EfficiencySummary,
@@ -37,12 +38,20 @@ function signed(v: number, digits = 1): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
 }
 
-function Card({ title, note, children }: Readonly<{ title: string; note?: React.ReactNode; children: React.ReactNode }>) {
+// `error`: the card's data didn't load — show that instead of the chart.
+function Card({
+  title,
+  note,
+  error = null,
+  children,
+}: Readonly<{ title: string; note?: React.ReactNode; error?: LoadError | null; children: React.ReactNode }>) {
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
       <h3 className="text-base font-semibold">{title}</h3>
-      {note && <p className="mt-1 text-xs text-neutral-500">{note}</p>}
-      <div className="mt-4">{children}</div>
+      {note && !error && <p className="mt-1 text-xs text-neutral-500">{note}</p>}
+      <div className="mt-4">
+        <Loadable error={error}>{children}</Loadable>
+      </div>
     </div>
   );
 }
@@ -66,15 +75,25 @@ function modelNote(p: AthletePhysiology): string {
 }
 
 export default async function TrainingPage() {
-  const [load, trends, hrZones, hrDrift, intensity, efficiency, longRuns] = await Promise.all([
-    serverFetch<TrainingLoadSummary>("/training/load?days=90", LOAD_FALLBACK),
-    serverFetch<PerformanceTrends>("/training/trends?weeks=12", TRENDS_FALLBACK),
-    serverFetch<HrZoneSummary>("/training/hr-zones?days=28", HR_ZONES_FALLBACK),
-    serverFetch<HrDriftSummary>("/training/hr-drift?days=90&limit=30", HR_DRIFT_FALLBACK),
-    serverFetch<IntensitySummary>("/training/intensity?weeks=12", INTENSITY_FALLBACK),
-    serverFetch<EfficiencySummary>("/training/efficiency?days=365", EFFICIENCY_FALLBACK),
-    serverFetch<LongRunSummary>("/training/long-runs?days=365", LONG_RUNS_FALLBACK),
-  ]);
+  const results = await Promise.all([
+    loadApi<TrainingLoadSummary>("/training/load?days=90", LOAD_FALLBACK),
+    loadApi<PerformanceTrends>("/training/trends?weeks=12", TRENDS_FALLBACK),
+    loadApi<HrZoneSummary>("/training/hr-zones?days=28", HR_ZONES_FALLBACK),
+    loadApi<HrDriftSummary>("/training/hr-drift?days=90&limit=30", HR_DRIFT_FALLBACK),
+    loadApi<IntensitySummary>("/training/intensity?weeks=12", INTENSITY_FALLBACK),
+    loadApi<EfficiencySummary>("/training/efficiency?days=365", EFFICIENCY_FALLBACK),
+    loadApi<LongRunSummary>("/training/long-runs?days=365", LONG_RUNS_FALLBACK),
+  ] as const);
+  const [loadR, trendsR, hrZonesR, hrDriftR, intensityR, efficiencyR, longRunsR] = results;
+  const [load, trends, hrZones, hrDrift, intensity, efficiency, longRuns] = results.map((r) => r.data) as [
+    TrainingLoadSummary,
+    PerformanceTrends,
+    HrZoneSummary,
+    HrDriftSummary,
+    IntensitySummary,
+    EfficiencySummary,
+    LongRunSummary,
+  ];
   const { current, coverage } = load;
   const tempModel = efficiency.temperatureModel;
 
@@ -85,7 +104,9 @@ export default async function TrainingPage() {
         <p className="mt-1 text-neutral-400">Load, intensity, aerobic efficiency and long-run durability</p>
       </div>
 
-      {load.insufficientHistory && (
+      <LoadErrorBanner errors={failures(...results)} />
+
+      {!loadR.error && load.insufficientHistory && (
         <div className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-sm text-neutral-400">
           Under 42 days of history — fitness (CTL) is still warming up, so read load figures as provisional.
         </div>
@@ -94,6 +115,7 @@ export default async function TrainingPage() {
       {/* ── Load ─────────────────────────────────────────────────────────── */}
       <section className="space-y-6">
         <SectionHeader title="Load" anchor="training-load" />
+        <Loadable error={loadR.error}>
         <p className="text-xs text-neutral-500">{modelNote(load.physiology)}</p>
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -144,16 +166,17 @@ export default async function TrainingPage() {
         >
           <PhasesTable result={load.phases} />
         </Card>
+        </Loadable>
       </section>
 
       {/* ── Volume ───────────────────────────────────────────────────────── */}
       <section className="space-y-6 border-t border-neutral-800 pt-8">
         <SectionHeader title="Volume" anchor="volume" />
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title="Weekly volume">
+          <Card title="Weekly volume" error={trendsR.error}>
             <WeeklyVolumeChart volumeByType={trends.volumeByType} />
           </Card>
-          <Card title="Weekly run pace" note="Raw average across every run — mixes easy days and workouts; see Aerobic efficiency below for a like-for-like trend.">
+          <Card title="Weekly run pace" error={trendsR.error} note="Raw average across every run — mixes easy days and workouts; see Aerobic efficiency below for a like-for-like trend.">
             <WeeklyPaceChart runPace={trends.runPace} />
           </Card>
         </div>
@@ -165,6 +188,7 @@ export default async function TrainingPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card
             title="Weekly intensity (3-zone)"
+            error={intensityR.error}
             note={
               intensity.overall.profile !== "insufficient-data"
                 ? `12 weeks: ${Math.round(intensity.overall.lowPct ?? 0)}% low · ${PROFILE_LABEL[intensity.overall.profile]}${
@@ -177,6 +201,7 @@ export default async function TrainingPage() {
           </Card>
           <Card
             title="Time in HR zone (28 days)"
+            error={hrZonesR.error}
             note={
               hrZones.zoneModel === "karvonen"
                 ? `Karvonen (heart-rate reserve) zones, resting HR ${hrZones.restingHeartRateEstimate} bpm from Garmin.`
@@ -191,7 +216,7 @@ export default async function TrainingPage() {
       {/* ── Aerobic efficiency ───────────────────────────────────────────── */}
       <section className="space-y-6 border-t border-neutral-800 pt-8">
         <SectionHeader title="Aerobic efficiency" anchor="aerobic-efficiency" />
-
+        <Loadable error={efficiencyR.error}>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <StatCard
             label="Efficiency factor (28 days)"
@@ -234,25 +259,26 @@ export default async function TrainingPage() {
             </Card>
           </div>
         )}
+        </Loadable>
       </section>
 
       {/* ── Long runs ────────────────────────────────────────────────────── */}
       <section className="space-y-6 border-t border-neutral-800 pt-8">
         <SectionHeader title="Long runs & durability" anchor="long-runs" />
-        <p className="text-xs text-neutral-500">{longRuns.definition}</p>
+        {!longRunsR.error && <p className="text-xs text-neutral-500">{longRuns.definition}</p>}
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card title="Durability by duration" note="Median drift and fade per duration band, last 12 months.">
+          <Card title="Durability by duration" error={longRunsR.error} note="Median drift and fade per duration band, last 12 months.">
             <DurabilityTable bins={longRuns.durability} />
           </Card>
           <div className="lg:col-span-2">
-            <Card title="Aerobic decoupling (runs ≥20 min, 90 days)" note="Grade-adjusted Pa:HR drift, first vs second half. Under ~5% is well coupled; over ~10% the effort outran aerobic fitness.">
+            <Card title="Aerobic decoupling (runs ≥20 min, 90 days)" error={hrDriftR.error} note="Grade-adjusted Pa:HR drift, first vs second half. Under ~5% is well coupled; over ~10% the effort outran aerobic fitness.">
               {hrDrift.streamsCount === 0 ? <StreamsBackfillPrompt /> : <HrDriftChart runs={hrDrift.runs} />}
             </Card>
           </div>
         </div>
 
-        <Card title="Long runs (12 months)">
+        <Card title="Long runs (12 months)" error={longRunsR.error}>
           <LongRunsTable runs={longRuns.runs} />
         </Card>
       </section>

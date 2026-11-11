@@ -1,25 +1,20 @@
 import Link from "next/link";
 import { SyncButton } from "@/components/sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
-import { apiFetch } from "@/lib/server-api";
+import { loadList } from "@/lib/server-api";
 import { ACTIVITY_TYPE_ICON, ACTIVITY_FILTERS } from "@/lib/constants";
-import type { ActivityRow } from "@/lib/types";
+import { EmptyState, ErrorState } from "@/components/states";
+import type { ActivityRow } from "@goalsplit/types";
 
 const PAGE_SIZE = 30;
 
-async function fetchActivities(type: string, page: number) {
+function fetchActivities(type: string, page: number) {
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
     offset: String(page * PAGE_SIZE),
     ...(type ? { type } : {}),
   });
-  try {
-    const res = await apiFetch(`/activities?${params}`);
-    if (!res.ok) return { data: [], total: 0 };
-    return res.json() as Promise<{ data: ActivityRow[]; total: number }>;
-  } catch {
-    return { data: [], total: 0 };
-  }
+  return loadList<ActivityRow>(`/activities?${params}`);
 }
 
 function formatDistance(metres: number) {
@@ -32,9 +27,12 @@ interface RunsPageProps {
 
 export default async function RunsPage({ searchParams }: Readonly<RunsPageProps>) {
   const { type = "Run", page: pageStr = "0" } = await searchParams;
-  const page = Math.max(0, parseInt(pageStr));
+  const parsed = Number.parseInt(pageStr, 10);
+  const page = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 
-  const { data: activities, total } = await fetchActivities(type, page);
+  const { data, error } = await fetchActivities(type, page);
+  const { rows: activities, total } = data; // total = matches for this filter
+  const filterLabel = ACTIVITY_FILTERS.find((f) => f.value === type)?.label.replace(/^\S+\s/, "").toLowerCase();
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const hasPrev = page > 0;
@@ -77,13 +75,19 @@ export default async function RunsPage({ searchParams }: Readonly<RunsPageProps>
       </div>
 
       {/* Table */}
-      {activities.length === 0 ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-10 text-center">
-          <p className="text-sm text-neutral-500">
-            {total === 0
-              ? "No activities yet — connect Strava and hit Sync."
-              : `No ${type.toLowerCase()} activities found.`}
-          </p>
+      {error ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+          <ErrorState error={error} />
+        </div>
+      ) : activities.length === 0 ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+          {total > 0 ? (
+            <EmptyState message="Nothing on this page." hint={<Link href={`/runs?type=${type}`} className="underline">Back to the first page</Link>} />
+          ) : type ? (
+            <EmptyState message={`No ${filterLabel ?? type.toLowerCase()} activities synced.`} hint="Try another type, or Sync to fetch new ones." />
+          ) : (
+            <EmptyState message="No activities yet." hint="Connect Strava and hit Sync to import them." />
+          )}
         </div>
       ) : (
         <div className="rounded-xl border border-neutral-800 bg-neutral-900 overflow-hidden">

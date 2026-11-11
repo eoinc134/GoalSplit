@@ -1,8 +1,17 @@
 import type { SyncStatus } from "@goalsplit/types";
-import { serverFetch } from "@/lib/server-api";
+import { load } from "@/lib/server-api";
+import { NOT_CONNECTED } from "@/lib/fallbacks";
 
 export async function StravaConnect() {
-  const status = await serverFetch<SyncStatus>("/auth/status", { isConnected: false });
+  const { data: status, error } = await load<SyncStatus>("/auth/status", NOT_CONNECTED);
+  // Unknown is not "not connected": don't offer a Connect button on a failed check.
+  if (error) {
+    return (
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 text-sm text-neutral-400">
+        <span className="font-medium text-neutral-200">Strava</span> — couldn&rsquo;t check the connection: {error.message}
+      </div>
+    );
+  }
   const needsReconnect = status.isConnected && status.needsReconnect;
 
   return (

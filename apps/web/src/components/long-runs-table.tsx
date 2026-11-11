@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { DurabilityBin, LongRunResult } from "@goalsplit/types";
 import { formatDate, formatPace, formatTime } from "@/lib/format";
+import { EmptyState } from "./states";
 
 function pct(v: number | null, digits = 1): string {
   return v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
@@ -11,7 +12,7 @@ const TD = "px-3 py-2 tabular-nums";
 
 export function LongRunsTable({ runs }: Readonly<{ runs: LongRunResult[] }>) {
   if (runs.length === 0) {
-    return <p className="py-10 text-center text-sm text-neutral-500">No long runs in this window yet.</p>;
+    return <EmptyState message="No long runs in this window yet." size="sm" />;
   }
 
   return (
@@ -62,6 +63,9 @@ export function LongRunsTable({ runs }: Readonly<{ runs: LongRunResult[] }>) {
 // Durability: how drift and fade grow with duration. Rising medians across
 // bins show where aerobic durability currently runs out.
 export function DurabilityTable({ bins }: Readonly<{ bins: DurabilityBin[] }>) {
+  if (!bins.some((b) => b.runCount > 0)) {
+    return <EmptyState message="No long runs in this window yet." size="sm" />;
+  }
   return (
     <table className="w-full text-sm">
       <thead className="border-b border-neutral-800">

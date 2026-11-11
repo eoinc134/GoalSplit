@@ -1,6 +1,7 @@
 import type { RacePredictionSummary } from "@goalsplit/types";
 import { METHODS_URL } from "@/lib/constants";
 import { formatDate, formatTime } from "@/lib/format";
+import { EmptyState } from "./states";
 
 const TH = "px-4 py-3 text-left text-xs font-medium text-neutral-500";
 const TD = "px-4 py-3 tabular-nums";
@@ -26,9 +27,14 @@ export function RacePredictions({ summary }: Readonly<{ summary: RacePredictionS
       </div>
 
       {!level ? (
-        <p className="p-10 text-center text-sm text-neutral-500">
-          No road races yet — tag races as <em>Race</em> on Strava, then Sync.
-        </p>
+        <EmptyState
+          message="No road races yet."
+          hint={
+            <>
+              Tag races as <em>Race</em> on Strava, then Sync.
+            </>
+          }
+        />
       ) : (
         <>
           <p className="px-5 pt-1 text-xs text-neutral-500">

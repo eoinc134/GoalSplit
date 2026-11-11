@@ -1,5 +1,6 @@
 import type { MeanWithCi, NextMorningGroup, Readiness } from "@goalsplit/types";
 import { METHODS_URL } from "@/lib/constants";
+import { EmptyState } from "./states";
 
 function shortDate(day: string): string {
   return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" });
@@ -85,7 +86,7 @@ const TD = "px-3 py-2 tabular-nums";
 // How the next morning looks after each kind of day, from the athlete's own history.
 export function NextMorningTable({ groups }: Readonly<{ groups: NextMorningGroup[] }>) {
   if (groups.length === 0) {
-    return <p className="py-8 text-center text-sm text-neutral-500">Not enough overlapping training and Garmin history yet.</p>;
+    return <EmptyState message="Not enough overlapping training and Garmin history yet." size="sm" />;
   }
   return (
     <div className="overflow-x-auto">

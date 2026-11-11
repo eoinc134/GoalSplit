@@ -1,5 +1,6 @@
 import type { SyncRunSummary, SyncStatusResponse } from "@goalsplit/types";
-import { serverFetch } from "@/lib/server-api";
+import { load } from "@/lib/server-api";
+import { ErrorState } from "./states";
 import { relativeTime, runDetail, runStatusLabel, runTone } from "@/lib/sync-messages";
 
 // Pipeline health at a glance: the latest Strava and Garmin sync, whether it
@@ -62,8 +63,15 @@ function SourceRow({
 }
 
 export async function SyncStatusPanel() {
-  const status = await serverFetch<SyncStatusResponse | null>("/sync/status", null);
-  if (!status) return null;
+  const { data: status, error } = await load<SyncStatusResponse | null>("/sync/status", null);
+  if (error || !status) {
+    return (
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500">Data sync</h2>
+        <ErrorState error={error ?? "No sync status returned"} size="sm" />
+      </div>
+    );
+  }
 
   const pending = status.strava.pendingEnrichment;
   const nextRun = status.schedule.nextRunAt;

@@ -6,6 +6,7 @@ import { requireApiKey } from "./middleware/api-key.js";
 import { generalLimiter, syncLimiter } from "./middleware/rate-limit.js";
 import { requestLog } from "./middleware/request-log.js";
 import { log } from "./lib/logger.js";
+import { sendError } from "./lib/api-errors.js";
 
 export const app = express();
 
@@ -35,7 +36,7 @@ app.post(["/api/activities/sync", "/api/garmin/sync"], syncLimiter);
 app.use("/api", router);
 
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: "Not found", statusCode: 404 });
+  sendError(res, 404, "NOT_FOUND", "No such endpoint");
 });
 
 // Last-resort handler (Express 5 routes rejected promises here too). Logs the
@@ -46,8 +47,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const status = (err as { status?: number }).status;
   if (status && status >= 400 && status < 500) {
     // e.g. malformed JSON or an oversized body from express.json()
-    return res.status(status).json({ error: "Bad request", statusCode: status });
+    return sendError(res, status, "BAD_REQUEST", "Malformed or oversized request body");
   }
   log.error("unhandled API error", { event: "http.unhandled_error", err });
-  return res.status(500).json({ error: "Internal server error", statusCode: 500 });
+  return sendError(res, 500, "INTERNAL_ERROR", "Something went wrong — it has been logged");
 });

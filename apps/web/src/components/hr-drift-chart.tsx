@@ -3,6 +3,7 @@
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { DecouplingResult } from "@goalsplit/types";
 import { formatDate } from "@/lib/format";
+import { EmptyState } from "./states";
 
 const AXIS_COLOR = "#737373"; // neutral-500
 const GRID_COLOR = "#262626"; // neutral-800
@@ -27,7 +28,7 @@ export function HrDriftChart({ runs }: Readonly<HrDriftChartProps>) {
     .map((r) => ({ localDate: r.localDate, decouplingPct: r.decouplingPct as number }));
 
   if (data.length === 0) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No aerobic decoupling data in this window yet.</p>;
+    return <EmptyState message="No aerobic decoupling data in this window yet." />;
   }
 
   return (

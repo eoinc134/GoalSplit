@@ -1,4 +1,5 @@
 import { rateLimit } from "express-rate-limit";
+import { errorBody } from "../lib/api-errors.js";
 
 // Nearly all traffic reaches the API through the web app's server-side proxy,
 // so per-IP limits here are close to global limits — which is what a
@@ -15,7 +16,7 @@ const common = {
 };
 
 function limited(statusMessage: string) {
-  return { error: statusMessage, statusCode: 429 };
+  return errorBody(429, "RATE_LIMITED", statusMessage);
 }
 
 // Every /api request. A Training page load is ~7 requests, so this leaves a

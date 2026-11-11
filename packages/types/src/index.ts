@@ -1,24 +1,32 @@
 export type ActivityType = "Run" | "Ride" | "Swim" | "Walk" | "Hike" | "VirtualRun" | string;
 
-export interface Activity {
+// A synced Strava activity as the API returns it (GET /api/activities): the
+// flattened `activities` row, in the database's snake_case. Everything else
+// Strava sends lives in the raw dumps, not here.
+export interface ActivityRow {
   id: string;
-  stravaId: number;
-  userId: string;
+  strava_id: number;
   name: string;
   type: ActivityType;
-  sportType: string;
+  sport_type: string;
   distance: number; // metres
-  movingTime: number; // seconds
-  elapsedTime: number; // seconds
-  totalElevationGain: number; // metres
-  averageSpeed: number; // m/s
-  maxSpeed: number; // m/s
-  averageHeartrate?: number; // bpm
-  maxHeartrate?: number; // bpm
-  startDate: string; // ISO 8601 UTC
-  startDateLocal: string; // ISO 8601 local
+  moving_time: number; // seconds
+  elapsed_time: number; // seconds
+  total_elevation_gain: number; // metres
+  average_speed: number; // m/s
+  max_speed: number; // m/s
+  average_heartrate: number | null; // bpm
+  max_heartrate: number | null; // bpm
+  start_date: string; // ISO 8601 UTC
+  start_date_local: string; // ISO 8601, local wall-clock time
   timezone: string;
-  syncedAt: string;
+  synced_at: string;
+}
+
+// GET /api/activities/:id — the row plus its decoded route and notes.
+export interface ActivityDetail extends ActivityRow {
+  route: [number, number][] | null; // [lat, lng]; null when there's no GPS data
+  notes: string | null; // workout type, effort, cadence, description, splits, best efforts
 }
 
 export interface StravaAthlete {
@@ -83,22 +91,55 @@ export interface SyncStatusResponse {
   schedule: { intervalMinutes: number; nextRunAt: string | null };
 }
 
-export interface ApiResponse<T> {
+// GET /api/dashboard/stats — runs only, distances in km.
+export interface DashboardStats {
+  totalRuns: number;
+  totalDistance: number;
+  weeklyDistance: number; // since Monday
+}
+
+// ── API envelope ────────────────────────────────────────────────────────────
+// Every JSON endpoint answers with one of these shapes (see
+// apps/api/src/lib/api-errors.ts). The web client unwraps `data`.
+
+export interface ApiSuccess<T> {
   data: T;
-  message?: string;
 }
 
-export interface ApiError {
-  error: string;
-  statusCode: number;
-}
-
-export interface PaginatedResponse<T> {
+// List endpoints (GET /api/activities): one page of rows plus the total.
+export interface ApiList<T> {
   data: T[];
   total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+}
+
+// Machine-readable error codes. `error` carries the human message; branch on
+// `code`, never on the message text.
+export type ApiErrorCode =
+  | "BAD_REQUEST"
+  | "VALIDATION_FAILED"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "SESSION_REQUIRED"
+  | "NOT_CONNECTED"
+  | "NOT_FOUND"
+  | "RATE_LIMITED"
+  | "SYNC_IN_PROGRESS"
+  | "SYNC_FAILED"
+  | "STRAVA_REAUTH_REQUIRED"
+  | "GARMIN_KEY_REJECTED"
+  | "GARMIN_NOT_CONFIGURED"
+  | "UPSTREAM_TIMEOUT"
+  | "API_UNAVAILABLE"
+  | "INSUFFICIENT_SCOPE"
+  | "ATHLETE_NOT_ALLOWED"
+  | "TOKEN_EXCHANGE_FAILED"
+  | "METRICS_PENDING"
+  | "INTERNAL_ERROR";
+
+export interface ApiErrorBody {
+  error: string;
+  code: ApiErrorCode;
+  statusCode: number;
 }
 
 // ── Training load & performance trends ─────────────────────────────────────────

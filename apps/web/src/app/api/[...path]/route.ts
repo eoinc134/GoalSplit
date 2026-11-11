@@ -27,11 +27,11 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
   // "." / ".." would be normalised away by URL parsing and could route
   // around the block list below.
   if (path.some((segment) => segment === "." || segment === "..")) {
-    return NextResponse.json({ error: "Not found", statusCode: 404 }, { status: 404 });
+    return NextResponse.json({ error: "Not found", code: "NOT_FOUND", statusCode: 404 }, { status: 404 });
   }
   const joined = path.map(encodeURIComponent).join("/");
   if (BLOCKED_PREFIXES.some((p) => joined === p || joined.startsWith(`${p}/`))) {
-    return NextResponse.json({ error: "Not found", statusCode: 404 }, { status: 404 });
+    return NextResponse.json({ error: "Not found", code: "NOT_FOUND", statusCode: 404 }, { status: 404 });
   }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
@@ -52,7 +52,10 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
     });
   } catch (err) {
     log.error("API proxy request failed", { event: "proxy.failed", requestId, path: `/${joined}`, err });
-    return NextResponse.json({ error: "API unavailable", statusCode: 502 }, { status: 502 });
+    return NextResponse.json(
+      { error: "The GoalSplit API is unreachable — try again shortly", code: "API_UNAVAILABLE", statusCode: 502 },
+      { status: 502 },
+    );
   }
 
   const responseHeaders = new Headers();

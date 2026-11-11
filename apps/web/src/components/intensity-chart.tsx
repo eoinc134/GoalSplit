@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import type { WeeklyIntensityPoint } from "@goalsplit/types";
 import { AXIS_COLOR, GRID_COLOR, INTENSITY, SURFACE_COLOR, TOOLTIP_STYLE, formatDayTick, legendLabel } from "./chart-theme";
 import { PROFILE_LABEL } from "./intensity-profile";
+import { EmptyState } from "./states";
 
 interface Row {
   weekStart: string;
@@ -43,7 +44,7 @@ function IntensityTooltip({ active, payload }: Readonly<{ active?: boolean; payl
 // absolute minutes live in the tooltip.
 export function IntensityChart({ weekly }: Readonly<{ weekly: WeeklyIntensityPoint[] }>) {
   if (!weekly.some((w) => w.lowMinutes + w.moderateMinutes + w.highMinutes > 0)) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No heart-rate time in this window yet.</p>;
+    return <EmptyState message="No heart-rate time in this window yet." />;
   }
 
   const bar = { stackId: "i", stroke: SURFACE_COLOR, strokeWidth: 2 };

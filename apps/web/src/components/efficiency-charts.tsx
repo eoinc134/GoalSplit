@@ -15,6 +15,7 @@ import {
 import type { ChangePointResult, EfficiencySummary, WeeklyPaceAtHrPoint } from "@goalsplit/types";
 import { formatPace } from "@/lib/format";
 import { AXIS_COLOR, GRID_COLOR, SERIES, TOOLTIP_STYLE, TOOLTIP_TEXT, formatDayTick, legendLabel } from "./chart-theme";
+import { EmptyState } from "./states";
 
 function toTs(dateStr: string): number {
   return new Date(`${dateStr}T00:00:00Z`).getTime();
@@ -65,7 +66,7 @@ function phaseMeanFor(weekStart: string, result: ChangePointResult): number | nu
 export function EfficiencyChart({ summary }: Readonly<{ summary: EfficiencySummary }>) {
   const aerobic = summary.runs.filter((r) => r.ef !== null && (r.runClass === "easy" || r.runClass === "recovery" || r.runClass === "long"));
   if (aerobic.length === 0) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No easy or long runs with HR streams in this window yet.</p>;
+    return <EmptyState message="No easy or long runs with HR streams in this window yet." />;
   }
 
   const toPoint = (r: (typeof aerobic)[number]): Point => ({ ts: toTs(r.localDate), ef: r.ef!, name: r.activityName, temp: r.avgTempC });
@@ -138,7 +139,7 @@ export function PaceAtHrChart({
   changePoints,
 }: Readonly<{ weekly: WeeklyPaceAtHrPoint[]; changePoints: ChangePointResult }>) {
   if (!weekly.some((w) => w.gapPaceSecPerKm !== null)) {
-    return <p className="py-16 text-center text-sm text-neutral-500">Fewer than 10 minutes in the HR band in any week so far.</p>;
+    return <EmptyState message="Fewer than 10 minutes in the HR band in any week so far." />;
   }
 
   const showPhases = changePoints.changes.length > 0;
@@ -171,7 +172,7 @@ export function PaceAtHrChart({
             }}
           />
           {showPhases && <Legend itemSorter={null} wrapperStyle={{ fontSize: 12 }} formatter={legendLabel} />}
-          <Line dataKey="gapPaceSecPerKm" name="GAP pace" stroke={SERIES.easy} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+          <Line dataKey="gapPaceSecPerKm" name="GAP pace" stroke={SERIES.easy} strokeWidth={2} dot={{ r: 4 }} connectNulls={false} />
           {showPhases && (
             <Line
               dataKey="phaseMean"

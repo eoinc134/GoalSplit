@@ -3,7 +3,7 @@ import type { SyncResult, SyncRunSummary } from "@goalsplit/types";
 // Human wording for sync outcomes, shared by the Sync buttons and the
 // dashboard's sync status panel.
 
-export function describeStopReason(reason: string | null | undefined): string | null {
+function describeStopReason(reason: string | null | undefined): string | null {
   if (reason === "rate_limit_15min") return "Strava's 15-minute rate limit was reached — sync again in 15 minutes to continue";
   if (reason === "rate_limit_daily") return "Strava's daily rate limit was reached — it continues after midnight UTC";
   return null;

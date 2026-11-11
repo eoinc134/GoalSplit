@@ -24,14 +24,17 @@ export async function middleware(request: NextRequest) {
     request.method !== "HEAD" &&
     request.headers.get("sec-fetch-site") === "cross-site"
   ) {
-    return NextResponse.json({ error: "Cross-site request refused", statusCode: 403 }, { status: 403 });
+    return NextResponse.json({ error: "Cross-site request refused", code: "FORBIDDEN", statusCode: 403 }, { status: 403 });
   }
 
   if (PUBLIC_PATHS.has(pathname) || authDisabled()) return NextResponse.next();
 
   const secret = sessionSecret();
   if (!secret) {
-    return NextResponse.json({ error: "Server misconfigured: SESSION_SECRET is not set", statusCode: 500 }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server misconfigured: SESSION_SECRET is not set", code: "INTERNAL_ERROR", statusCode: 500 },
+      { status: 500 },
+    );
   }
 
   if (await verifySessionValue(request.cookies.get(SESSION_COOKIE)?.value, secret)) {

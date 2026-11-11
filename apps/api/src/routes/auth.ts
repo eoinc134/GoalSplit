@@ -5,6 +5,7 @@ import { authLimiter } from "../middleware/rate-limit.js";
 import { log } from "../lib/logger.js";
 import { saveToken } from "../services/token.service.js";
 import { getCurrentUserId, isAthleteAllowed } from "../services/user.service.js";
+import { sendError } from "../lib/api-errors.js";
 
 // Strava OAuth, driven by the web app. The browser only ever talks to the web
 // app: it generates the `state` value (kept in a cookie), sends the user to
@@ -16,7 +17,7 @@ export const authRouter = Router();
 authRouter.get("/strava/authorize-url", (req, res) => {
   const { state } = req.query;
   if (typeof state !== "string" || state.length < 16) {
-    return res.status(400).json({ error: "state is required", statusCode: 400 });
+    return sendError(res, 400, "BAD_REQUEST", "A state value of at least 16 characters is required");
   }
   return res.json({ data: { url: buildAuthUrl(state) } });
 });
@@ -24,7 +25,7 @@ authRouter.get("/strava/authorize-url", (req, res) => {
 authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
   const { code, scope } = (req.body ?? {}) as { code?: unknown; scope?: unknown };
   if (typeof code !== "string" || code.length === 0) {
-    return res.status(400).json({ error: "code is required", statusCode: 400 });
+    return sendError(res, 400, "BAD_REQUEST", "An authorisation code is required");
   }
   // Strava's consent screen lets the athlete untick permissions. Without
   // activity:read_all sign-in would "work" but every sync would fail, so
@@ -32,7 +33,7 @@ authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
   // the callback URL; absent means an older web build — let it through.
   if (typeof scope === "string" && !scope.split(",").includes("activity:read_all")) {
     log.warn("strava sign-in refused: activity:read_all not granted", { event: "strava.signin_refused", scope });
-    return res.status(403).json({ error: "insufficient_scope", statusCode: 403 });
+    return sendError(res, 403, "INSUFFICIENT_SCOPE", "GoalSplit needs permission to read your activities (activity:read_all)");
   }
 
   let tokenData;
@@ -41,13 +42,13 @@ authRouter.post("/strava/exchange", authLimiter, async (req, res) => {
   } catch (err) {
     log.error("strava code exchange failed", { event: "strava.exchange_failed", err });
     const statusCode = err instanceof StravaAuthError ? 400 : 502;
-    return res.status(statusCode).json({ error: "token_exchange_failed", statusCode });
+    return sendError(res, statusCode, "TOKEN_EXCHANGE_FAILED", "Strava didn't accept the sign-in — try again");
   }
 
   const athlete = tokenData.athlete;
   if (!(await isAthleteAllowed(athlete.id))) {
     log.warn("strava sign-in refused: not the allowed athlete", { event: "strava.signin_refused", athleteId: athlete.id });
-    return res.status(403).json({ error: "athlete_not_allowed", statusCode: 403 });
+    return sendError(res, 403, "ATHLETE_NOT_ALLOWED", "This GoalSplit instance belongs to a different Strava athlete");
   }
 
   await sql`

@@ -1,5 +1,11 @@
 import type {
   AthletePhysiology,
+  DashboardStats,
+  GarminDaysResponse,
+  PersonalRecords,
+  RacePredictionSummary,
+  RecoverySummary,
+  SyncStatus,
   ChangePointResult,
   EfficiencySummary,
   HrDriftSummary,
@@ -10,7 +16,10 @@ import type {
   TrainingLoadSummary,
 } from "@goalsplit/types";
 
-// Rendered when the API is unreachable, so pages degrade to empty states.
+// What each API read renders as when it fails (see load() in server-api.ts):
+// the page still renders, and shows the error for the affected sections.
+// One place for all of them, so a page can't drift from another's idea of
+// "empty".
 const PHYSIOLOGY: AthletePhysiology = {
   hrMax: null,
   hrRest: 60,
@@ -92,3 +101,21 @@ export const EFFICIENCY_FALLBACK: EfficiencySummary = {
 };
 
 export const LONG_RUNS_FALLBACK: LongRunSummary = { windowDays: 365, definition: "", runs: [], durability: [] };
+
+export const STATS_FALLBACK: DashboardStats = { totalRuns: 0, totalDistance: 0, weeklyDistance: 0 };
+
+export const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
+
+export const PREDICTIONS_FALLBACK: RacePredictionSummary = {
+  level: null,
+  predictions: [],
+  typicalErrorPct: null,
+  backtest: [],
+  races: [],
+};
+
+export const GARMIN_FALLBACK: GarminDaysResponse = { days: [], latestDay: null, lastSyncedAt: null };
+
+export const RECOVERY_FALLBACK: RecoverySummary = { restingHr: [], bedtime: null, nextMorning: [], readiness: null };
+
+export const NOT_CONNECTED: SyncStatus = { isConnected: false };

@@ -90,7 +90,7 @@ describe("POST /api/prs", () => {
       .send({ distanceLabel: "10K", timeSeconds: 2400, achievedDate: "2026-01-01", sourceActivityId: "not-mine" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/sourceActivityId/);
+    expect(res.body.error).toMatch(/linked activity/);
   });
 
   it("creates a manual entry with a valid sourceActivityId", async () => {

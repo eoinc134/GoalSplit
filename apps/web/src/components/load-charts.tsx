@@ -24,14 +24,12 @@ import {
   formatDayTick,
   legendLabel,
 } from "./chart-theme";
+import { EmptyState } from "./states";
 
 // Foster's commonly cited threshold: weekly monotony above ~2 alongside high
 // strain preceded illness/overtraining in his cohort.
 const HIGH_MONOTONY = 2;
 
-function Empty({ message }: Readonly<{ message: string }>) {
-  return <p className="py-16 text-center text-sm text-neutral-500">{message}</p>;
-}
 
 const xAxisProps = {
   tickFormatter: formatDayTick,
@@ -42,7 +40,7 @@ const xAxisProps = {
 
 // CTL and ATL share a unit (TRIMP/day), so one axis is honest here.
 export function FitnessFatigueChart({ daily }: Readonly<{ daily: DailyLoadPoint[] }>) {
-  if (!daily.some((d) => d.ctl > 0 || d.atl > 0)) return <Empty message="No training load in this window yet." />;
+  if (!daily.some((d) => d.ctl > 0 || d.atl > 0)) return <EmptyState message="No training load in this window yet." />;
 
   return (
     <div className="h-64 w-full">
@@ -68,7 +66,7 @@ export function FitnessFatigueChart({ daily }: Readonly<{ daily: DailyLoadPoint[
 }
 
 export function FormChart({ daily }: Readonly<{ daily: DailyLoadPoint[] }>) {
-  if (!daily.some((d) => d.ctl > 0)) return <Empty message="No training load in this window yet." />;
+  if (!daily.some((d) => d.ctl > 0)) return <EmptyState message="No training load in this window yet." />;
 
   return (
     <div className="h-48 w-full">
@@ -93,7 +91,7 @@ export function FormChart({ daily }: Readonly<{ daily: DailyLoadPoint[] }>) {
 }
 
 export function DailyLoadChart({ daily, referenceLoad }: Readonly<{ daily: DailyLoadPoint[]; referenceLoad: number }>) {
-  if (!daily.some((d) => d.activityCount > 0)) return <Empty message="No training load in this window yet." />;
+  if (!daily.some((d) => d.activityCount > 0)) return <EmptyState message="No training load in this window yet." />;
 
   return (
     <div className="h-48 w-full">
@@ -137,7 +135,7 @@ function WeeklyTooltip({ active, payload }: Readonly<WeeklyTooltipProps>) {
 }
 
 export function WeeklyLoadChart({ weekly }: Readonly<{ weekly: WeeklyLoadPoint[] }>) {
-  if (!weekly.some((w) => w.load > 0)) return <Empty message="No weekly load yet." />;
+  if (!weekly.some((w) => w.load > 0)) return <EmptyState message="No weekly load yet." />;
 
   return (
     <div className="h-48 w-full">
@@ -155,7 +153,7 @@ export function WeeklyLoadChart({ weekly }: Readonly<{ weekly: WeeklyLoadPoint[]
 }
 
 export function MonotonyChart({ weekly }: Readonly<{ weekly: WeeklyLoadPoint[] }>) {
-  if (!weekly.some((w) => w.monotony !== null)) return <Empty message="Not enough varied training to compute monotony yet." />;
+  if (!weekly.some((w) => w.monotony !== null)) return <EmptyState message="Not enough varied training to compute monotony yet." />;
 
   return (
     <div className="h-48 w-full">

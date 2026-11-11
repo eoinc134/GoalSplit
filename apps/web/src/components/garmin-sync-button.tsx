@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import type { GarminSyncResult } from "@goalsplit/types";
+import { api, errorMessage } from "@/lib/api";
 
 // Runs a Garmin sync on demand and shows the outcome — including the real
 // reason when it fails (key missing, expired, or Garmin refusing the request),
@@ -16,15 +17,12 @@ export function GarminSyncButton() {
     setState("syncing");
     setMessage(null);
     try {
-      const { data } = await api.post<{ data: { synced: number; start: string; end: string; mode?: string } }>(
-        "/garmin/sync",
-        {},
-      );
+      const data = await api.post<GarminSyncResult & { start: string; end: string; mode?: string }>("/garmin/sync");
       const kind = data.mode === "backfill" ? "Backfilled" : "Synced";
       setMessage({ text: `${kind} ${data.synced} days (${data.start} to ${data.end})`, ok: true });
       router.refresh();
     } catch (err) {
-      setMessage({ text: err instanceof Error ? err.message : "Garmin sync failed", ok: false });
+      setMessage({ text: errorMessage(err, "Garmin sync failed"), ok: false });
     } finally {
       setState("idle");
     }

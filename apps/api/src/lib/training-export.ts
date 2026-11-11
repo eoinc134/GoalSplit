@@ -1,5 +1,5 @@
 import type { RunClass } from "@goalsplit/types";
-import type { ActivityRow } from "../routes/activities.js";
+import type { ActivityRow } from "@goalsplit/types";
 
 // Latest raw Strava payloads for one activity, keyed by dump source.
 // `list` is cheap and always present; `detail` (splits, best efforts,

@@ -38,7 +38,16 @@ async function sourceStatus(userId: string, source: SyncSource): Promise<SyncSou
 
 syncRouter.get("/status", async (_req, res) => {
   const userId = await getCurrentUserId();
-  if (!userId) return res.status(404).json({ error: "No athlete connected", statusCode: 404 });
+  // A read: with no athlete connected there's simply no history yet.
+  if (!userId) {
+    const none = { running: false, last: null, lastSuccess: null, recent: [] };
+    const empty: SyncStatusResponse = {
+      strava: { ...none, pendingEnrichment: 0 },
+      garmin: { ...none, configured: garminConfigured() },
+      schedule: scheduleInfo(),
+    };
+    return res.json({ data: empty });
+  }
 
   const [strava, garmin, pendingEnrichment] = await Promise.all([
     sourceStatus(userId, "strava"),

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SyncResult } from "@goalsplit/types";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { describeSyncResult } from "@/lib/sync-messages";
 
 export function SyncButton() {
@@ -16,11 +16,11 @@ export function SyncButton() {
     setMessage(null);
 
     try {
-      const { data } = await api.post<{ data: SyncResult }>(`/activities/sync${full ? "?full=true" : ""}`, {});
+      const data = await api.post<SyncResult>(`/activities/sync${full ? "?full=true" : ""}`);
       setMessage(describeSyncResult(data));
       router.refresh();
     } catch (err: unknown) {
-      const text = err instanceof Error ? err.message : "Sync failed";
+      const text = errorMessage(err, "Sync failed");
       // A sync already running (e.g. the scheduled one) isn't an error.
       const tone = err instanceof ApiError && err.code === "SYNC_IN_PROGRESS" ? "warn" : "error";
       setMessage({ text, tone });

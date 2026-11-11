@@ -134,7 +134,8 @@ describe("Strava OAuth", () => {
     mockExchange.mockRejectedValueOnce(new StravaAuthError("Token exchange failed", 400));
     const res = await request(app).post("/api/auth/strava/exchange").send({ code: "c" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("token_exchange_failed");
+    expect(res.body).toMatchObject({ code: "TOKEN_EXCHANGE_FAILED", statusCode: 400 });
+    expect(res.body.error).not.toMatch(/strava returned|body/i);
   });
 });
 

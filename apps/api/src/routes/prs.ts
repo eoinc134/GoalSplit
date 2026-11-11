@@ -12,6 +12,7 @@ import type { ManualPrEntry } from "@goalsplit/types";
 import { getCurrentUserId } from "../services/user.service.js";
 import { getPhysiology, loadAnalyticsActivities } from "../services/analytics-data.service.js";
 import { buildRacePredictions, selectRoadRaces } from "../lib/race-prediction.js";
+import { notConnected, notFound, sendError } from "../lib/api-errors.js";
 
 export const prsRouter = Router();
 
@@ -83,12 +84,12 @@ prsRouter.get("/", async (_req, res) => {
 prsRouter.post("/", async (req, res) => {
   const validation = validateManualPrInput(req.body);
   if (!validation.valid) {
-    return res.status(400).json({ error: validation.error, statusCode: 400 });
+    return sendError(res, 400, "VALIDATION_FAILED", validation.error ?? "Invalid personal record");
   }
 
   const userId = await getCurrentUserId();
   if (!userId) {
-    return res.status(401).json({ error: "Connect Strava before adding personal records", statusCode: 401 });
+    return notConnected(res, "add personal records");
   }
 
   const { distanceLabel, timeSeconds, achievedDate, notes, sourceActivityId } = req.body as {
@@ -104,7 +105,7 @@ prsRouter.post("/", async (req, res) => {
       SELECT id FROM activities WHERE id = ${sourceActivityId} AND user_id = ${userId}
     `;
     if (!owned) {
-      return res.status(400).json({ error: "sourceActivityId does not exist or isn't yours", statusCode: 400 });
+      return sendError(res, 400, "VALIDATION_FAILED", "The linked activity doesn't exist");
     }
   }
 
@@ -130,14 +131,14 @@ prsRouter.post("/", async (req, res) => {
 
 prsRouter.delete("/:id", async (req, res) => {
   const userId = await getCurrentUserId();
-  if (!userId) return res.status(404).json({ error: "Not found", statusCode: 404 });
+  if (!userId) return notFound(res, "Personal record not found");
 
   const result = await sql`
     DELETE FROM manual_prs WHERE id = ${req.params.id} AND user_id = ${userId}
   `;
 
   if (result.count === 0) {
-    return res.status(404).json({ error: "Not found", statusCode: 404 });
+    return notFound(res, "Personal record not found");
   }
   return res.status(204).send();
 });

@@ -12,61 +12,41 @@ import { getCurrentUserId } from "../services/user.service.js";
 import { afterStravaSync } from "../services/pipeline.service.js";
 import { syncErrorResponse } from "./sync-errors.js";
 import { analyseActivities } from "../services/analytics-data.service.js";
+import { intParam, notConnected, notFound } from "../lib/api-errors.js";
+import type { ActivityRow, ApiList } from "@goalsplit/types";
 
 export const activitiesRouter = Router();
 
-export interface ActivityRow {
-  id: string;
-  strava_id: number;
-  name: string;
-  type: string;
-  sport_type: string;
-  distance: number;
-  moving_time: number;
-  elapsed_time: number;
-  total_elevation_gain: number;
-  average_speed: number;
-  max_speed: number;
-  average_heartrate: number | null;
-  max_heartrate: number | null;
-  start_date: string;
-  start_date_local: string;
-  timezone: string;
-  synced_at: string;
-}
+// Exactly the columns of the shared ActivityRow type — never `SELECT *`, so
+// internal columns (user_id, streams_missing) don't leak into responses.
+// Built once and reused by each query (checked against real Postgres: a
+// postgres.js fragment can be embedded in any number of queries).
+const ACTIVITY_COLUMNS = sql`
+  id, strava_id, name, type, sport_type, distance, moving_time, elapsed_time,
+  total_elevation_gain, average_speed, max_speed, average_heartrate, max_heartrate,
+  start_date, start_date_local, timezone, synced_at
+`;
 
 activitiesRouter.get("/", async (req, res) => {
-  const type = typeof req.query.type === "string" ? req.query.type : undefined;
-  const limit = Math.min(parseInt(String(req.query.limit ?? "50")), 200);
-  const offset = parseInt(String(req.query.offset ?? "0"));
+  const type = typeof req.query.type === "string" && req.query.type !== "" ? req.query.type : undefined;
+  const limit = intParam(req.query.limit, 50, 1, 200);
+  const offset = intParam(req.query.offset, 0, 0, 1_000_000);
 
   const userId = await getCurrentUserId();
-  if (!userId) return res.json({ data: [], total: 0 });
+  if (!userId) return res.json({ data: [], total: 0 } satisfies ApiList<ActivityRow>);
 
-  const activities = type
-    ? await sql<ActivityRow[]>`
-        SELECT * FROM activities
-        WHERE user_id = ${userId} AND type = ${type}
-        ORDER BY start_date DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `
-    : await sql<ActivityRow[]>`
-        SELECT * FROM activities
-        WHERE user_id = ${userId}
-        ORDER BY start_date DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
+  const typeFilter = type ? sql`AND type = ${type}` : sql``;
+  const activities = await sql<ActivityRow[]>`
+    SELECT ${ACTIVITY_COLUMNS} FROM activities
+    WHERE user_id = ${userId} ${typeFilter}
+    ORDER BY start_date DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  const [{ count }] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::INTEGER AS count FROM activities WHERE user_id = ${userId} ${typeFilter}
+  `;
 
-  const [{ count }] = type
-    ? await sql<{ count: number }[]>`
-        SELECT COUNT(*)::INTEGER AS count FROM activities
-        WHERE user_id = ${userId} AND type = ${type}
-      `
-    : await sql<{ count: number }[]>`
-        SELECT COUNT(*)::INTEGER AS count FROM activities WHERE user_id = ${userId}
-      `;
-
-  return res.json({ data: activities, total: count });
+  return res.json({ data: activities, total: count } satisfies ApiList<ActivityRow>);
 });
 
 // Latest 'list' and 'detail' dump per activity, keyed by activity id.
@@ -108,13 +88,13 @@ activitiesRouter.get("/export", async (req, res) => {
 
   const activities = type
     ? await sql<ActivityRow[]>`
-        SELECT * FROM activities
+        SELECT ${ACTIVITY_COLUMNS} FROM activities
         WHERE user_id = ${userId} AND type = ${type}
           AND start_date >= NOW() - (${days} || ' days')::INTERVAL
         ORDER BY start_date DESC
       `
     : await sql<ActivityRow[]>`
-        SELECT * FROM activities
+        SELECT ${ACTIVITY_COLUMNS} FROM activities
         WHERE user_id = ${userId}
           AND start_date >= NOW() - (${days} || ' days')::INTERVAL
         ORDER BY start_date DESC
@@ -145,7 +125,7 @@ activitiesRouter.get("/export", async (req, res) => {
 activitiesRouter.post("/sync", async (req, res) => {
   const userId = await getCurrentUserId();
   if (!userId) {
-    return res.status(401).json({ error: "Not connected to Strava", statusCode: 401 });
+    return notConnected(res, "sync activities");
   }
 
   try {
@@ -168,12 +148,12 @@ activitiesRouter.post("/sync", async (req, res) => {
 // above it — Express matches GET routes in registration order.
 activitiesRouter.get("/:id", async (req, res) => {
   const userId = await getCurrentUserId();
-  if (!userId) return res.status(404).json({ error: "Not found", statusCode: 404 });
+  if (!userId) return notFound(res, "Activity not found");
 
   const [activity] = await sql<ActivityRow[]>`
-    SELECT * FROM activities WHERE id = ${req.params.id} AND user_id = ${userId}
+    SELECT ${ACTIVITY_COLUMNS} FROM activities WHERE id = ${req.params.id} AND user_id = ${userId}
   `;
-  if (!activity) return res.status(404).json({ error: "Not found", statusCode: 404 });
+  if (!activity) return notFound(res, "Activity not found");
 
   const [dumps, analysis] = await Promise.all([fetchDumpsForActivities([activity.id]), analyseActivities(userId)]);
   const activityDumps = dumps[activity.id];

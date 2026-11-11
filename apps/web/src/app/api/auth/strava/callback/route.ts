@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { ApiErrorBody } from "@goalsplit/types";
 import { apiFetch } from "@/lib/server-api";
 import { log } from "@/lib/log";
 import {
@@ -44,8 +45,8 @@ export async function GET(request: NextRequest) {
       body: JSON.stringify({ code, scope: params.get("scope") ?? undefined }),
     });
     if (res.status === 403) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      return fail(body.error === "insufficient_scope" ? "scope" : "not_allowed");
+      const body = (await res.json().catch(() => ({}))) as Partial<ApiErrorBody>;
+      return fail(body.code === "INSUFFICIENT_SCOPE" ? "scope" : "not_allowed");
     }
     if (res.status === 429) return fail("rate_limited");
     if (!res.ok) return fail("exchange");

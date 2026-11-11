@@ -198,27 +198,27 @@ export function validateManualPrInput(body: unknown): ValidationResult {
   const b = body as Record<string, unknown>;
 
   if (typeof b.distanceLabel !== "string" || b.distanceLabel.trim().length === 0 || b.distanceLabel.length > 60) {
-    return { valid: false, error: "distanceLabel must be 1-60 characters" };
+    return { valid: false, error: "Distance must be 1–60 characters" };
   }
 
   if (!Number.isInteger(b.timeSeconds) || (b.timeSeconds as number) <= 0 || (b.timeSeconds as number) > 172_800) {
-    return { valid: false, error: "timeSeconds must be a positive integer of at most 172800 (48h)" };
+    return { valid: false, error: "Time must be more than 0 and at most 48 hours" };
   }
 
   if (typeof b.achievedDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.achievedDate)) {
-    return { valid: false, error: "achievedDate must be in YYYY-MM-DD format" };
+    return { valid: false, error: "Date must be in YYYY-MM-DD format" };
   }
   const parsed = new Date(`${b.achievedDate}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) {
-    return { valid: false, error: "achievedDate is not a valid calendar date" };
+    return { valid: false, error: "That date doesn't exist" };
   }
   const todayStr = new Date().toISOString().slice(0, 10);
   if (b.achievedDate > todayStr) {
-    return { valid: false, error: "achievedDate cannot be in the future" };
+    return { valid: false, error: "Date can't be in the future" };
   }
 
   if (b.notes !== undefined && b.notes !== null && (typeof b.notes !== "string" || b.notes.length > 200)) {
-    return { valid: false, error: "notes must be a string of at most 200 characters" };
+    return { valid: false, error: "Notes can be at most 200 characters" };
   }
 
   if (
@@ -226,7 +226,7 @@ export function validateManualPrInput(body: unknown): ValidationResult {
     b.sourceActivityId !== null &&
     typeof b.sourceActivityId !== "string"
   ) {
-    return { valid: false, error: "sourceActivityId must be a string" };
+    return { valid: false, error: "The linked activity is invalid" };
   }
 
   return { valid: true };

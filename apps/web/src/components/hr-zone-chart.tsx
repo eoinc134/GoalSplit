@@ -3,6 +3,7 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { BarShapeProps } from "recharts";
 import type { HrZoneMinutes } from "@goalsplit/types";
+import { EmptyState } from "./states";
 
 const AXIS_COLOR = "#737373"; // neutral-500
 const GRID_COLOR = "#262626"; // neutral-800
@@ -34,7 +35,7 @@ export function HrZoneChart({ minutesByZone }: Readonly<HrZoneChartProps>) {
   const totalMinutes = minutesByZone.reduce((sum, z) => sum + z.minutes, 0);
 
   if (totalMinutes === 0) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No time-in-zone data in this window yet.</p>;
+    return <EmptyState message="No time-in-zone data in this window yet." />;
   }
 
   const data = minutesByZone.map((z) => ({ zone: `Z${z.zone}`, minutes: Math.round(z.minutes), colorIndex: z.zone }));

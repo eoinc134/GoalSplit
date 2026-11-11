@@ -3,6 +3,7 @@
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { WeeklyVolumePoint, WeeklyPacePoint, ActivityType } from "@goalsplit/types";
 import { formatPace } from "@/lib/format";
+import { EmptyState } from "./states";
 
 const AXIS_COLOR = "#737373"; // neutral-500
 const GRID_COLOR = "#262626"; // neutral-800
@@ -40,7 +41,7 @@ function pivotVolumeByWeek(points: WeeklyVolumePoint[]) {
 
 export function WeeklyVolumeChart({ volumeByType }: Readonly<WeeklyVolumeChartProps>) {
   if (volumeByType.length === 0) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No activity volume in this window yet.</p>;
+    return <EmptyState message="No activity volume in this window yet." />;
   }
 
   const data = pivotVolumeByWeek(volumeByType);
@@ -93,7 +94,7 @@ export function WeeklyPaceChart({ runPace }: Readonly<WeeklyPaceChartProps>) {
     }));
 
   if (data.length === 0) {
-    return <p className="py-16 text-center text-sm text-neutral-500">No Run activity in this window yet.</p>;
+    return <EmptyState message="No Run activity in this window yet." />;
   }
 
   return (

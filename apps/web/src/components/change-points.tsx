@@ -1,5 +1,6 @@
 import type { ChangePointResult } from "@goalsplit/types";
 import { formatDate } from "@/lib/format";
+import { EmptyState } from "./states";
 
 // Segments are keyed by week start; show the phase ending on that week's Sunday.
 function weekEnd(weekStart: string): string {
@@ -52,7 +53,7 @@ const TD = "px-3 py-2 tabular-nums";
 // Training phases: stretches of weeks at a consistent load level.
 export function PhasesTable({ result }: Readonly<{ result: ChangePointResult }>) {
   if (result.segments.length === 0) {
-    return <p className="py-10 text-center text-sm text-neutral-500">Not enough weekly history to detect phases yet.</p>;
+    return <EmptyState message="Not enough weekly history to detect phases yet." size="sm" />;
   }
 
   return (

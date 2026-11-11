@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
+import { sendError } from "../lib/api-errors.js";
 
 // Every /api route sits behind a shared secret. Browsers never hold it: the
 // web app is a backend-for-frontend that checks the user's session, then
@@ -31,5 +32,5 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const presented = presentedKey(req);
   if (presented && timingSafeEqual(digest(presented), digest(expected))) return next();
 
-  return res.status(401).json({ error: "Unauthorized", statusCode: 401 });
+  return sendError(res, 401, "UNAUTHORIZED", "Missing or invalid API key");
 }

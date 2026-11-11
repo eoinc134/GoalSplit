@@ -2,12 +2,12 @@ import { StatCard } from "@/components/stat-card";
 import { GarminSyncButton } from "@/components/garmin-sync-button";
 import { BodyBatteryChart, RestingHrBaselineChart, SleepStagesChart, StressChart } from "@/components/recovery-charts";
 import { NextMorningTable, ReadinessCard } from "@/components/recovery-insights";
-import { serverFetch } from "@/lib/server-api";
+import { ErrorState, LoadErrorBanner, Loadable } from "@/components/states";
+import { failures, load, type LoadError } from "@/lib/server-api";
 import { formatDate } from "@/lib/format";
-import { GARMIN_FALLBACK, latestValue } from "@/lib/garmin";
+import { latestValue } from "@/lib/garmin";
+import { GARMIN_FALLBACK, RECOVERY_FALLBACK } from "@/lib/fallbacks";
 import type { GarminDayPoint, GarminDaysResponse, RecoverySummary, RestingHrBaselinePoint } from "@goalsplit/types";
-
-const RECOVERY_FALLBACK: RecoverySummary = { restingHr: [], bedtime: null, nextMorning: [], readiness: null };
 const STALE_AFTER_DAYS = 2;
 const DETAIL_DAYS = 30; // sleep, Body Battery and stress charts
 
@@ -48,28 +48,41 @@ function restingHrSubtext(latest: { day: string } | null, point: RestingHrBaseli
   return shortDate(latest.day);
 }
 
-function Card({ title, note, children }: Readonly<{ title: string; note?: React.ReactNode; children: React.ReactNode }>) {
+// `error`: the card's data didn't load — show that instead of the chart.
+function Card({
+  title,
+  note,
+  error = null,
+  children,
+}: Readonly<{ title: string; note?: React.ReactNode; error?: LoadError | null; children: React.ReactNode }>) {
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
       <h2 className="text-base font-semibold">{title}</h2>
-      {note && <p className="mt-1 text-xs text-neutral-500">{note}</p>}
-      <div className="mt-4">{children}</div>
+      {note && !error && <p className="mt-1 text-xs text-neutral-500">{note}</p>}
+      <div className="mt-4">
+        <Loadable error={error}>{children}</Loadable>
+      </div>
     </div>
   );
 }
 
 export default async function RecoveryPage() {
-  const [{ days, latestDay, lastSyncedAt }, recovery] = await Promise.all([
-    serverFetch<GarminDaysResponse>("/garmin/days?days=90", GARMIN_FALLBACK),
-    serverFetch<RecoverySummary>("/garmin/recovery?days=90", RECOVERY_FALLBACK),
+  const [daysR, recoveryR] = await Promise.all([
+    load<GarminDaysResponse>("/garmin/days?days=90", GARMIN_FALLBACK),
+    load<RecoverySummary>("/garmin/recovery?days=90", RECOVERY_FALLBACK),
   ]);
+  const { days, latestDay, lastSyncedAt } = daysR.data;
+  const recovery = recoveryR.data;
   const restingHr = latestValue(days, "restingHeartRate");
   const sleep = latestValue(days, "sleepDurationHours");
   const hrv = latestValue(days, "hrvLastNightAvg");
   const bodyBattery = latestValue(days, "bodyBatteryHigh");
   const stressRest = days.findLast((d) => d.stressRestSeconds !== null);
   const latestRhrPoint = recovery.restingHr.at(-1);
-  const freshness = freshnessNote(latestDay, lastSyncedAt);
+  // A failed read isn't "no Garmin data yet — press Sync".
+  const freshness = daysR.error
+    ? { text: "Couldn't load Garmin data, so its freshness is unknown.", warn: true }
+    : freshnessNote(latestDay, lastSyncedAt);
   const recent = days.slice(-DETAIL_DAYS);
   const bedtime = recovery.bedtime;
 
@@ -88,8 +101,17 @@ export default async function RecoveryPage() {
         <GarminSyncButton />
       </div>
 
-      <ReadinessCard readiness={recovery.readiness} />
+      <LoadErrorBanner errors={failures(daysR, recoveryR)} />
 
+      {recoveryR.error ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+          <ErrorState error={recoveryR.error} size="sm" />
+        </div>
+      ) : (
+        <ReadinessCard readiness={recovery.readiness} />
+      )}
+
+      <Loadable error={daysR.error} size="sm">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
           label="Resting HR"
@@ -113,9 +135,11 @@ export default async function RecoveryPage() {
         />
         {hrv && <StatCard label="HRV" value={`${Math.round(hrv.value)} ms`} subtext={`Night ending ${shortDate(hrv.day)}`} />}
       </div>
+      </Loadable>
 
       <Card
         title="Resting heart rate (90 days)"
+        error={recoveryR.error}
         note="Against your own 28-day baseline. A morning well above your normal range is an early sign of fatigue or illness; diamonds mark those more than 2 SD and 3+ bpm above it."
       >
         <RestingHrBaselineChart points={recovery.restingHr} />
@@ -123,6 +147,7 @@ export default async function RecoveryPage() {
 
       <Card
         title="After a hard day"
+        error={recoveryR.error}
         note="How the next morning has looked after rest days and after your easier, moderate and hardest third of training days (by TRIMP), across all your history. Means with 95% intervals; small n means a wide interval."
       >
         <NextMorningTable groups={recovery.nextMorning} />
@@ -131,6 +156,7 @@ export default async function RecoveryPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card
           title={`Sleep (${DETAIL_DAYS} days)`}
+          error={daysR.error}
           note={
             bedtime
               ? `Usual bedtime ${bedtime.meanBedtime}, waking ${bedtime.meanWake}; bedtime varies by about ${bedtime.sdMinutes} min (last ${bedtime.nights} nights).`
@@ -139,10 +165,10 @@ export default async function RecoveryPage() {
         >
           <SleepStagesChart days={recent} />
         </Card>
-        <Card title={`Body Battery (${DETAIL_DAYS} days)`} note="Energy charged (mostly overnight) against energy drained each day.">
+        <Card title={`Body Battery (${DETAIL_DAYS} days)`} error={daysR.error} note="Energy charged (mostly overnight) against energy drained each day.">
           <BodyBatteryChart days={recent} />
         </Card>
-        <Card title={`Stress (${DETAIL_DAYS} days)`} note="Hours in each Garmin stress band, from heart-rate variability while you're still.">
+        <Card title={`Stress (${DETAIL_DAYS} days)`} error={daysR.error} note="Hours in each Garmin stress band, from heart-rate variability while you're still.">
           <StressChart days={recent} />
         </Card>
       </div>

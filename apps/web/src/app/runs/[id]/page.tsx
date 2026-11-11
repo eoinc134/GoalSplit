@@ -2,17 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { StatCard } from "@/components/stat-card";
 import { RouteMap } from "@/components/route-map";
-import { apiFetch } from "@/lib/server-api";
+import { ErrorState } from "@/components/states";
+import { load } from "@/lib/server-api";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
-import type { ActivityDetail } from "@/lib/types";
-import type { ActivityRoute } from "@goalsplit/types";
-
-async function fetchActivity(id: string): Promise<ActivityDetail | null> {
-  const res = await apiFetch(`/activities/${encodeURIComponent(id)}`);
-  if (res.status === 404) return null;
-  const { data } = (await res.json()) as { data: ActivityDetail };
-  return data;
-}
+import type { ActivityDetail, ActivityRoute } from "@goalsplit/types";
 
 function formatDistance(metres: number) {
   return (metres / 1000).toFixed(2) + " km";
@@ -24,8 +17,20 @@ interface ActivityDetailPageProps {
 
 export default async function ActivityDetailPage({ params }: Readonly<ActivityDetailPageProps>) {
   const { id } = await params;
-  const activity = await fetchActivity(id);
-  if (!activity) notFound();
+  const { data: activity, error } = await load<ActivityDetail | null>(`/activities/${encodeURIComponent(id)}`, null);
+  if (error?.status === 404) notFound();
+  if (error || !activity) {
+    return (
+      <div className="space-y-6">
+        <Link href="/runs" className="text-sm text-neutral-400 transition-colors hover:text-neutral-100">
+          ← All activities
+        </Link>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+          <ErrorState error={error ?? "The activity came back empty"} />
+        </div>
+      </div>
+    );
+  }
 
   const route: ActivityRoute | null = activity.route
     ? {

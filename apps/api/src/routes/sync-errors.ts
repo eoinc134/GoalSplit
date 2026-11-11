@@ -1,3 +1,5 @@
+import type { ApiErrorBody, ApiErrorCode } from "@goalsplit/types";
+import { errorBody } from "../lib/api-errors.js";
 import { HttpTimeoutError } from "../lib/http.js";
 import { StravaAuthError } from "../lib/strava-client.js";
 import { SyncInProgressError, type SyncSource } from "../services/sync-runs.service.js";
@@ -8,15 +10,15 @@ import { STRAVA_REAUTH_REQUIRED } from "../services/token.service.js";
 // Garmin key) from its own session expiring — all three are 401s.
 export interface SyncErrorResponse {
   status: number;
-  body: { error: string; code?: string; statusCode: number };
+  body: ApiErrorBody;
 }
 
 export function syncErrorResponse(err: unknown, source: SyncSource): SyncErrorResponse {
   const name = source === "strava" ? "Strava" : "Garmin";
   const message = err instanceof Error ? err.message : "";
-  const respond = (status: number, error: string, code?: string): SyncErrorResponse => ({
+  const respond = (status: number, error: string, code: ApiErrorCode): SyncErrorResponse => ({
     status,
-    body: { error, ...(code ? { code } : {}), statusCode: status },
+    body: errorBody(status, code, error),
   });
 
   if (err instanceof SyncInProgressError) {

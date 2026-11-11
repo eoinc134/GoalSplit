@@ -29,6 +29,7 @@ import {
   formatDayTick,
   legendLabel,
 } from "./chart-theme";
+import { EmptyState } from "./states";
 
 const xAxis = {
   dataKey: "day",
@@ -40,9 +41,6 @@ const xAxis = {
 const yTick = { fill: AXIS_COLOR, fontSize: 11 };
 const gap = { stroke: SURFACE_COLOR, strokeWidth: 2 };
 
-function Empty({ message }: Readonly<{ message: string }>) {
-  return <p className="py-16 text-center text-sm text-neutral-500">{message}</p>;
-}
 
 function TooltipBox({ title, rows }: Readonly<{ title: string; rows: [string, string][] }>) {
   return (
@@ -71,7 +69,7 @@ interface RhrRow {
 }
 
 export function RestingHrBaselineChart({ points }: Readonly<{ points: RestingHrBaselinePoint[] }>) {
-  if (points.length === 0) return <Empty message="No resting HR yet: wear your watch for at least 12 hours a day." />;
+  if (points.length === 0) return <EmptyState message="No resting HR yet: wear your watch for at least 12 hours a day." />;
   const data: RhrRow[] = points.map((p) => ({
     day: p.day,
     restingHr: p.restingHr,
@@ -103,7 +101,7 @@ export function RestingHrBaselineChart({ points }: Readonly<{ points: RestingHrB
           <Legend itemSorter={null} wrapperStyle={{ fontSize: 12 }} formatter={legendLabel} />
           <Area dataKey="band" name="Normal range (±1 SD)" fill={REFERENCE_COLOR} fillOpacity={0.15} stroke="none" connectNulls={false} />
           <Line dataKey="baseline" name="28-day baseline" stroke={REFERENCE_COLOR} strokeDasharray="5 4" strokeWidth={1.5} dot={false} connectNulls={false} />
-          <Line dataKey="restingHr" name="Resting HR" stroke={SERIES.fitness} strokeWidth={2} dot={{ r: 2.5 }} connectNulls />
+          <Line dataKey="restingHr" name="Resting HR" stroke={SERIES.fitness} strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} />
           <Scatter dataKey="elevated" name="Elevated" fill={STRESS_BANDS.medium} shape="diamond" legendType="diamond" />
         </ComposedChart>
       </ResponsiveContainer>
@@ -142,7 +140,7 @@ export function SleepStagesChart({ days }: Readonly<{ days: GarminDayPoint[] }>)
         end: d.sleepEndLocal,
       };
     });
-  if (data.length === 0) return <Empty message="No sleep recorded in this window: wear your watch overnight." />;
+  if (data.length === 0) return <EmptyState message="No sleep recorded in this window: wear your watch overnight." />;
   const anyUnstaged = data.some((r) => r.unstaged > 0);
 
   return (
@@ -183,7 +181,7 @@ export function BodyBatteryChart({ days }: Readonly<{ days: GarminDayPoint[] }>)
   const data = days
     .filter((d) => d.bodyBatteryCharged !== null || d.bodyBatteryDrained !== null)
     .map((d) => ({ day: d.day, charged: d.bodyBatteryCharged ?? 0, drained: -(d.bodyBatteryDrained ?? 0), high: d.bodyBatteryHigh }));
-  if (data.length === 0) return <Empty message="No Body Battery data in this window." />;
+  if (data.length === 0) return <EmptyState message="No Body Battery data in this window." />;
 
   return (
     <div className="h-56 w-full">
@@ -232,7 +230,7 @@ export function StressChart({ days }: Readonly<{ days: GarminDayPoint[] }>) {
       high: hours(d.stressHighSeconds),
       avg: d.avgStressLevel,
     }));
-  if (data.length === 0) return <Empty message="No stress data in this window." />;
+  if (data.length === 0) return <EmptyState message="No stress data in this window." />;
 
   return (
     <div className="h-56 w-full">

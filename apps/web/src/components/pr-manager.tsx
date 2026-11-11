@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ManualPrEntry } from "@goalsplit/types";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { formatTime, formatDate, toSeconds } from "@/lib/format";
 import { PR_DISTANCE_LADDER } from "@/lib/constants";
-import type { ActivityRow } from "@/lib/types";
+import type { ActivityRow } from "@goalsplit/types";
 
 interface PrManagerProps {
   initialManualEntries: ManualPrEntry[];
@@ -26,6 +26,7 @@ export function PrManager({ initialManualEntries, activities }: Readonly<PrManag
   const [formState, setFormState] = useState<FormState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +48,7 @@ export function PrManager({ initialManualEntries, activities }: Readonly<PrManag
 
     setFormState("submitting");
     try {
+      // api.post unwraps the { data } envelope, so this is the entry itself.
       const created = await api.post<ManualPrEntry>("/prs", {
         distanceLabel: distanceLabel.trim(),
         timeSeconds,
@@ -63,19 +65,21 @@ export function PrManager({ initialManualEntries, activities }: Readonly<PrManag
       setFormState("idle");
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to add PR");
+      setError(errorMessage(err, "Couldn't add the PR"));
       setFormState("error");
     }
   }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
+    setDeleteError(null);
     try {
       await api.delete(`/prs/${id}`);
       setEntries((prev) => prev.filter((e) => e.id !== id));
       router.refresh();
-    } catch {
-      // leave the entry in place — the user can retry
+    } catch (err: unknown) {
+      // The entry stays, with the reason next to it, so it can be retried.
+      setDeleteError({ id, message: errorMessage(err, "Couldn't remove it") });
     } finally {
       setDeletingId(null);
     }
@@ -185,6 +189,11 @@ export function PrManager({ initialManualEntries, activities }: Readonly<PrManag
                     {entry.notes && ` · ${entry.notes}`}
                   </p>
                 </div>
+                {deleteError?.id === entry.id && (
+                  <span role="alert" className="text-xs text-red-400">
+                    {deleteError.message}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => handleDelete(entry.id)}

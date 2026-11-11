@@ -1,26 +1,18 @@
 import Link from "next/link";
 import { SyncButton } from "./sync-button";
 import { formatTime, formatDate, paceFromSpeed } from "@/lib/format";
-import { apiFetch } from "@/lib/server-api";
+import { loadList } from "@/lib/server-api";
 import { ACTIVITY_TYPE_ICON } from "@/lib/constants";
-import type { ActivityRow } from "@/lib/types";
-
-async function fetchActivities(): Promise<{ data: ActivityRow[]; total: number }> {
-  try {
-    const res = await apiFetch("/activities?limit=10");
-    if (!res.ok) return { data: [], total: 0 };
-    return res.json();
-  } catch {
-    return { data: [], total: 0 };
-  }
-}
+import { EmptyState, ErrorState } from "./states";
+import type { ActivityRow } from "@goalsplit/types";
 
 function formatDistance(metres: number): string {
   return (metres / 1000).toFixed(2) + " km";
 }
 
 export async function ActivityList() {
-  const { data: activities, total } = await fetchActivities();
+  const { data, error } = await loadList<ActivityRow>("/activities?limit=10");
+  const { rows: activities, total } = data;
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
@@ -39,10 +31,10 @@ export async function ActivityList() {
         </div>
       </div>
 
-      {activities.length === 0 ? (
-        <p className="text-sm text-neutral-500">
-          No activities yet — connect Strava and hit Sync to import your runs.
-        </p>
+      {error ? (
+        <ErrorState error={error} size="sm" />
+      ) : activities.length === 0 ? (
+        <EmptyState size="sm" message="No activities yet." hint="Connect Strava and hit Sync to import your runs." />
       ) : (
         <ul className="divide-y divide-neutral-800/50">
           {activities.map((act) => (

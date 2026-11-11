@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { ApiSuccess, DashboardStats } from "@goalsplit/types";
 import { sql } from "../db/index.js";
 import { getCurrentUserId } from "../services/user.service.js";
 
@@ -34,7 +35,5 @@ dashboardRouter.get("/stats", async (_req, res) => {
     weeklyDistance = Math.round((weekStats?.weekly_distance ?? 0) / 100) / 10;
   }
 
-  return res.json({
-    data: { totalRuns, totalDistance, weeklyDistance },
-  });
+  return res.json({ data: { totalRuns, totalDistance, weeklyDistance } } satisfies ApiSuccess<DashboardStats>);
 });

@@ -1,19 +1,18 @@
 import { PrManager } from "@/components/pr-manager";
 import { RacePredictions } from "@/components/race-predictions";
-import { serverFetch } from "@/lib/server-api";
+import { EmptyState, ErrorState, LoadErrorBanner } from "@/components/states";
+import { PREDICTIONS_FALLBACK, PRS_FALLBACK } from "@/lib/fallbacks";
+import { failures, load, loadList } from "@/lib/server-api";
 import { formatTime, formatDate } from "@/lib/format";
-import type { PersonalRecords, RacePredictionSummary } from "@goalsplit/types";
-import type { ActivityRow } from "@/lib/types";
-
-const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
-const PREDICTIONS_FALLBACK: RacePredictionSummary = { level: null, predictions: [], typicalErrorPct: null, backtest: [], races: [] };
+import type { ActivityRow, PersonalRecords, RacePredictionSummary } from "@goalsplit/types";
 
 export default async function PrsPage() {
-  const [prs, activities, predictions] = await Promise.all([
-    serverFetch<PersonalRecords>("/prs", PRS_FALLBACK),
-    serverFetch<ActivityRow[]>("/activities?limit=200", []),
-    serverFetch<RacePredictionSummary>("/prs/predictions", PREDICTIONS_FALLBACK),
+  const [prsR, activitiesR, predictionsR] = await Promise.all([
+    load<PersonalRecords>("/prs", PRS_FALLBACK),
+    loadList<ActivityRow>("/activities?limit=200"),
+    load<RacePredictionSummary>("/prs/predictions", PREDICTIONS_FALLBACK),
   ]);
+  const prs = prsR.data;
 
   return (
     <div className="space-y-8">
@@ -25,11 +24,13 @@ export default async function PrsPage() {
         </p>
       </div>
 
+      <LoadErrorBanner errors={failures(prsR, activitiesR, predictionsR)} />
+
       <div className="rounded-xl border border-neutral-800 bg-neutral-900 overflow-hidden">
-        {prs.records.length === 0 ? (
-          <p className="p-10 text-center text-sm text-neutral-500">
-            No records yet — sync some activities or add one manually below.
-          </p>
+        {prsR.error ? (
+          <ErrorState error={prsR.error} />
+        ) : prs.records.length === 0 ? (
+          <EmptyState message="No records yet." hint="Sync some activities, or add one manually below." />
         ) : (
           <table className="w-full text-sm">
             <thead className="border-b border-neutral-800 bg-neutral-800/50">
@@ -66,9 +67,17 @@ export default async function PrsPage() {
         )}
       </div>
 
-      <RacePredictions summary={predictions} />
+      {predictionsR.error ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+          <ErrorState error={predictionsR.error} />
+        </div>
+      ) : (
+        <RacePredictions summary={predictionsR.data} />
+      )}
 
-      <PrManager initialManualEntries={prs.manualEntries} activities={activities} />
+      {/* Without the existing entries the list would look empty, and an add
+          could duplicate one — so the manager waits for a successful load. */}
+      {prsR.error ? null : <PrManager initialManualEntries={prs.manualEntries} activities={activitiesR.data.rows} />}
     </div>
   );
 }

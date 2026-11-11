@@ -4,6 +4,7 @@ import { getCurrentUserId } from "../services/user.service.js";
 import { garminConfigured, runGarminSync } from "../services/garmin-api.service.js";
 import { syncErrorResponse } from "./sync-errors.js";
 import { getRecoverySummary, loadGarminDays } from "../services/recovery.service.js";
+import { notConnected, sendError } from "../lib/api-errors.js";
 
 export const garminRouter = Router();
 
@@ -21,9 +22,9 @@ function positiveInt(raw: unknown): number | null {
 // N days.
 garminRouter.post("/sync", async (req, res) => {
   const userId = await getCurrentUserId();
-  if (!userId) return res.status(401).json({ error: "Connect Strava before syncing Garmin data", statusCode: 401 });
+  if (!userId) return notConnected(res, "sync Garmin data");
   if (!garminConfigured()) {
-    return res.status(412).json({ error: "Set GARMIN_API (a Garmin Personal API key) in apps/api/.env", statusCode: 412 });
+    return sendError(res, 412, "GARMIN_NOT_CONFIGURED", "Garmin isn't set up: add a Garmin Personal API key as GARMIN_API");
   }
 
   try {
