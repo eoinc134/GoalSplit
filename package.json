@@ -9,7 +9,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "type-check": "turbo type-check"
+    "type-check": "turbo type-check",
+    "test": "turbo test"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
@@ -17,6 +18,6 @@
   },
   "packageManager": "npm@11.7.0",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.0"
   }
 }

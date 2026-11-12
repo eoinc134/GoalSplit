@@ -1,27 +1,40 @@
 # Setup & operations
 
-Running GoalSplit locally, deploying it, and keeping the data syncing.
+Running GoalSplit locally, deploying it, and keeping the data syncing. For what each
+piece does and how they connect, see [Architecture](../README.md#architecture) in the
+README. For logs, errors and health checks, see [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ## Stack
 
 Next.js 15 frontend (`apps/web`, port 3000) · Express 5 API (`apps/api`, port 3001) ·
 PostgreSQL · shared TypeScript types (`packages/types`) · MCP server for Claude
-(`apps/mcp-trainer`). npm workspaces + Turborepo.
+(`apps/mcp-trainer`) · Python research code (`research/`). npm workspaces + Turborepo.
 
 ## Run locally
 
-Requires Node.js and Docker Desktop (plus Python 3.11+ for `research/` only).
+Requires:
+- **Node.js 22** (20.19 or later works; production runs 22);
+- **Docker Desktop**, for Postgres;
+- **Python 3.13**, only for `research/`.
 
 ```sh
 npm install
-cp .env.example .env                  # Docker Compose variables
-cp apps/api/.env.example apps/api/.env # add Strava credentials and the Garmin API key
+cp .env.example .env                  # Docker Compose: pick a POSTGRES_PASSWORD
+cp apps/api/.env.example apps/api/.env # DATABASE_URL (below), Strava credentials, Garmin key
 cp apps/web/.env.example apps/web/.env.local
-docker compose up -d                  # Postgres on port 5433; migrations run on API start
-npm run dev                           # web on :3000, API on :3001
+docker compose up -d                  # Postgres on port 5433
+npm run dev                           # web on :3000, API on :3001; migrations run on API start
 ```
 
-Other commands: `npm run build`, `npm run test`, `npm run type-check`, `npm run lint`.
+`DATABASE_URL` in `apps/api/.env` uses the root `.env` values:
+`postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@localhost:5433/<POSTGRES_DB>`.
+
+Leave the security variables empty locally (`API_KEY`, `SESSION_SECRET`, …). The apps then
+run open, with no sign-in screen.
+
+Other commands, run from the repo root across every app: `npm run build`, `npm run test`,
+`npm run type-check`, `npm run lint`. Python checks live in `research/` (see
+[research/README.md](../research/README.md#development)).
 
 ## Strava
 
@@ -29,7 +42,8 @@ Other commands: `npm run build`, `npm run test`, `npm run type-check`, `npm run 
 2. Put `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` and
    `STRAVA_REDIRECT_URI=http://localhost:3000/api/auth/strava/callback` in `apps/api/.env`.
    The callback is the **web** app's route: it runs the sign-in flow (see [Security](#security)).
-3. **Connect Strava** on the dashboard, then **Sync Activities**.
+3. **Connect Strava** on the dashboard, then **Sync Activities**. In production, signing in
+   *is* connecting Strava: **Sign in with Strava** on the login page does both.
 4. Click **Backfill History** on the Activities page to fetch per-second streams for
    older activities. Streams power every HR- and pace-based analysis. The backfill stops
    at ~80 % of Strava's rate limit and resumes on the next click (see
@@ -85,6 +99,61 @@ the recent training log. Build it with `npm run build --workspace=@goalsplit/mcp
 `GOALSPLIT_API_KEY` is only needed when the API it points at has `API_KEY` set. The
 repo's `.mcp.json` reads it from your environment rather than storing it.
 
+## Environment variables
+
+Every variable, by where it's set. "Prod" marks the ones a deployed service needs. The
+API refuses to start in production without its three security variables, and a
+production web build without `SESSION_SECRET` refuses every request. Locally, anything
+not marked *needed locally* can stay empty. The `.env.example` files hold the same
+list, with comments.
+
+**API** (`apps/api/.env`, and the API service on Railway)
+
+| Variable | Prod | Purpose |
+|---|---|---|
+| `DATABASE_URL` | ✓ | Postgres connection string. *Needed locally* |
+| `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` | ✓ | Your Strava API app. *Needed locally* |
+| `STRAVA_REDIRECT_URI` | ✓ | The **web** app's `/api/auth/strava/callback` URL. *Needed locally* |
+| `API_KEY` | ✓ | Shared secret the web app and MCP server send as `x-api-key`. 32+ characters |
+| `TOKEN_ENCRYPTION_KEY` | ✓ | 32 bytes (hex or base64): encrypts stored Strava tokens. Losing it means reconnecting Strava |
+| `ALLOWED_STRAVA_ATHLETE_ID` | ✓ | The one Strava athlete allowed to sign in |
+| `NODE_ENV` | ✓ | `production` on Railway (the Dockerfile sets it) |
+| `GARMIN_API` | | Garmin Personal API key. Unset means no Garmin sync |
+| `SENTRY_DSN` | | `goalsplit-api` DSN. Unset means Sentry is off |
+| `SENTRY_TRACES_SAMPLE_RATE` | | Performance tracing, e.g. `0.1`. Default `0` |
+| `SYNC_INTERVAL_MINUTES` | | Automatic sync interval. Default `360`; `0` turns it off |
+| `LOG_LEVEL` | | `debug` / `info` (default) / `warn` / `error` |
+| `SLOW_REQUEST_MS` | | Requests slower than this are logged as warnings. Default `2000` |
+| `SHUTDOWN_GRACE_MS` | | How long in-flight requests get on shutdown. Default `8000` |
+| `PORT` | | Default `3001` (Railway sets it) |
+
+**Web** (`apps/web/.env.local`, and the web service on Railway)
+
+| Variable | Prod | Purpose |
+|---|---|---|
+| `API_URL` | ✓ | The API's base URL, ending in `/api`, including `http(s)://`. Default `http://localhost:3001/api` |
+| `API_KEY` | ✓ | Same value as the API's |
+| `SESSION_SECRET` | ✓ | Signs session cookies; changing it signs you out |
+| `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` | | `goalsplit-web` DSN, for the server and the browser. The browser one is baked in at build time |
+| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | | Build time only: source-map upload. The token is a secret |
+| `SENTRY_TRACES_SAMPLE_RATE`, `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` | | Tracing, server and browser. Default `0` |
+
+**Set by Railway automatically**, and read for logs, health and Sentry releases:
+`RAILWAY_GIT_COMMIT_SHA` (the `version` on every log line), `RAILWAY_DEPLOYMENT_ID`,
+`RAILWAY_ENVIRONMENT_NAME` and `RAILWAY_REPLICA_ID`. Locally they're absent and
+`version` reads `dev`.
+
+**Elsewhere:**
+
+| File | Variables | For |
+|---|---|---|
+| `.env` (root) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Docker Compose's local and research databases |
+| `.env.railway` | `DATABASE_URL` (Railway's *public* connection string) | `scripts/research-snapshot.ps1` only |
+| `research/.env` | `DATABASE_URL` (the snapshot), `GOALSPLIT_API_URL`, `GOALSPLIT_API_KEY` | Research notebooks |
+| MCP client config | `GOALSPLIT_API_URL`, `GOALSPLIT_API_KEY` | `apps/mcp-trainer` (see [Claude via MCP](#claude-via-mcp)) |
+
+Generate secrets with `openssl rand -hex 32`.
+
 ## Security
 
 GoalSplit is single-athlete. The pieces:
@@ -98,8 +167,8 @@ GoalSplit is single-athlete. The pieces:
   every page and `/api/*` call. The browser never talks to the API directly. It calls
   the web app's same-origin `/api/*` proxy, which adds the API key server-side.
 - **API:** every `/api` route requires `API_KEY` (`x-api-key` or `Authorization: Bearer`).
-  Only `/health` is open. The API sends no CORS headers, so browsers can't call it
-  cross-origin at all.
+  Only the health checks (`/health`, `/health/live`, `/health/ready`) are open. The API
+  sends no CORS headers, so browsers can't call it cross-origin at all.
 - **Rate limits** (API, per 15 min): 600 requests overall, 10 syncs (Strava + Garmin),
   20 OAuth code exchanges.
 - **Strava tokens** are encrypted at rest with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`).
@@ -117,6 +186,22 @@ Syncs run when you click **Sync**, and automatically every `SYNC_INTERVAL_MINUTE
 (default 360, i.e. every 6 hours; `0` turns it off). Each Strava sync is followed by
 metric precomputation and a Garmin sync. The dashboard's **Data sync** panel shows the
 latest run of each, with the reason if it failed or stopped early.
+
+```mermaid
+flowchart LR
+    trigger["Sync button<br/>or scheduler (6 h)"] --> lock{"Strava sync<br/>already running?"}
+    lock -- yes --> busy["409 SYNC_IN_PROGRESS"]
+    lock -- no --> list["Read the activity list<br/>(new + last 7 days)"]
+    list --> enrich["Fetch detail + streams<br/>for new activities"]
+    enrich --> repair["Repair up to 20 activities<br/>still missing them"]
+    repair --> budget{"Rate limit<br/>at 80%?"}
+    budget -- yes --> partial["Run ends 'partial'<br/>next sync resumes"]
+    budget -- no --> ok["Run ends 'ok'"]
+    partial --> after
+    ok --> after["Precompute stream metrics,<br/>then Garmin sync"]
+    after --> garmin["Garmin: fetch + save<br/>84-day windows"]
+    list & enrich & repair & garmin -.-> dumps[("activity_dumps · garmin_dumps<br/>sync_runs")]
+```
 
 - **Strava, incremental:** fetches activities newer than the latest stored one, and
   re-reads the past 7 days to pick up edits. New activities get their detail and streams
@@ -190,21 +275,28 @@ nothing to do, and round-trips the newest migration down and up when it's revers
 
 ## Deploy (Railway)
 
-Two services from this repo, plus a Postgres add-on.
+Two services from this repo, plus a Postgres add-on. Keep the API at **one replica**,
+because the scheduler and the one-sync-at-a-time lock live in the process.
 
-| Service | Build | Start | Env |
+| Service | Build | Start | Healthcheck path |
 |---|---|---|---|
-| API | `npm ci && npx turbo build --filter=@goalsplit/api` | `node apps/api/dist/index.js` | `NODE_ENV=production`, `DATABASE_URL`, `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI` (`https://<web>/api/auth/strava/callback`), `GARMIN_API`, `API_KEY`, `TOKEN_ENCRYPTION_KEY`, `ALLOWED_STRAVA_ATHLETE_ID` |
-| Web | `npm ci && npx turbo build --filter=@goalsplit/web` | `npm run start --workspace=apps/web` | `API_URL` (`http://<api>.railway.internal:<PORT>/api`, or the API's public URL), `API_KEY` (same value as the API's), `SESSION_SECRET` |
+| API | `apps/api/Dockerfile` (build context: repo root), or `npm ci && npx turbo build --filter=@goalsplit/api` | The Dockerfile's `CMD`, or `npm run start --workspace=apps/api` | `/health/ready` |
+| Web | `npm ci && npx turbo build --filter=@goalsplit/web` | `npm run start --workspace=apps/web` | `/api/health/live` |
 
-Set the Strava app's callback domain to the **web** service's Railway domain. Only the web
-app calls the API, so if `API_URL` uses Railway's private network, the API service needs
-no public domain at all. Generate secrets with `openssl rand -hex 32`. Optional API
-variables: `SYNC_INTERVAL_MINUTES`, `LOG_LEVEL` (see [Sync pipeline](#sync-pipeline)).
-Keep the API at one replica.
-
-For logs, Sentry, health checks and the Railway healthcheck paths (API `/health/ready`,
-web `/api/health/live`), see [OBSERVABILITY.md](OBSERVABILITY.md).
+- **Dockerfile vs build commands:** the Dockerfile is the reference build. It runs as an
+  unprivileged user, sets `NODE_ENV=production`, and turns on source-mapped stack traces.
+  With build and start commands instead, set `NODE_ENV=production` yourself. `npm run
+  start` already passes `--enable-source-maps`.
+- **Variables:** see [Environment variables](#environment-variables). Every one marked
+  "Prod" must be set before the first deploy, or the API refuses to start.
+- **Strava:** set the Strava app's callback domain to the **web** service's domain, and
+  `STRAVA_REDIRECT_URI` to `https://<web-domain>/api/auth/strava/callback`.
+- **Private networking:** only the web app calls the API. If `API_URL` uses Railway's
+  private network (`http://<api>.railway.internal:<PORT>/api`), the API needs no public
+  domain.
+- **Healthchecks:** the API's makes a deploy wait until Postgres is reachable and
+  migrations have run. The web one is web-only, so a web deploy doesn't fail while the API
+  is mid-deploy. Uptime monitoring and Sentry are in [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ## API
 
@@ -228,21 +320,66 @@ In the web app:
 - **Shared UI states:** `EmptyState`, `ErrorState`, `LoadErrorBanner` and `Skeleton`
   live in `components/states.tsx`.
 
+All `/api` routes need the API key (`x-api-key` or `Authorization: Bearer`) whenever
+`API_KEY` is set. The browser reaches them through the web app's session-checked
+`/api/*` proxy, which adds the key.
+
+**Training analytics** (all `GET`)
+
+| Path | Returns |
+|---|---|
+| `/api/training/load?days=28–365` | TRIMP, CTL/ATL/TSB, EWMA ACWR, weekly monotony/strain, training phases |
+| `/api/training/trends?weeks=1–52` | Weekly volume by type, raw run pace |
+| `/api/training/intensity?weeks=4–52` | Weekly 5- and 3-zone time, polarization index |
+| `/api/training/hr-zones?days=7–180` | Time in HR zone |
+| `/api/training/hr-drift?days=7–365&limit=1–50` | Aerobic decoupling per run |
+| `/api/training/efficiency?days=28–730` | Per-run EF, rolling median, Z2 pace, temperature model, change points |
+| `/api/training/long-runs?days=28–1095` | Long-run drift/fade/HR rise, durability bins |
+| `/api/dashboard/stats` | Run count, total and this-week distance |
+
+**Activities and records**
+
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/api/training/load?days=28–365` | TRIMP, CTL/ATL/TSB, EWMA ACWR, weekly monotony/strain |
-| `GET` | `/api/training/intensity?weeks=4–52` | Weekly 5- and 3-zone time, polarization index |
-| `GET` | `/api/training/efficiency?days=28–730` | Per-run EF, rolling median, Z2 pace, temperature model |
-| `GET` | `/api/training/long-runs?days=28–1095` | Long-run drift/fade/HR rise, durability bins |
-| `GET` | `/api/training/hr-zones?days=7–180` | Time in HR zone |
-| `GET` | `/api/training/hr-drift?days=7–365&limit=1–50` | Aerobic decoupling per run |
-| `GET` | `/api/training/trends?weeks=1–52` | Weekly volume by type, raw run pace |
-| `GET` | `/api/activities` · `/api/activities/:id` | Synced activities, single activity with route + notes |
-| `POST` | `/api/activities/sync[?full=true]` | Sync new activities, or backfill history; `complete`/`stopReason` say if it stopped early |
-| `GET` | `/health/live` · `/health/ready` | Liveness, and readiness (DB + migrations). Public, see [OBSERVABILITY.md](OBSERVABILITY.md#health-checks) |
-| `GET` | `/api/sync/status` | Latest Strava and Garmin runs, outstanding enrichment, schedule |
-| `GET` | `/api/activities/export?days=&type=&format=markdown\|json` | Training log for Claude |
-| `GET` / `POST` / `DELETE` | `/api/prs` | Personal records (Strava-derived + manual) |
-| `GET` | `/api/garmin/days?days=7–365` | Daily Garmin wellness data |
+| `GET` | `/api/activities?type=&limit=1–200&offset=` | One page of activities: `{ data, total }` |
+| `GET` | `/api/activities/:id` | One activity with its decoded route and notes |
+| `GET` | `/api/activities/export?days=1–365&type=&format=markdown\|json` | Training log, used by the MCP server |
+| `POST` | `/api/activities/sync[?full=true]` | Incremental sync, or full backfill; `complete`/`stopReason` say if it stopped early |
+| `GET` | `/api/prs` | Personal records (Strava best efforts + manual entries) |
+| `POST` / `DELETE` | `/api/prs` · `/api/prs/:id` | Add / remove a manual record |
+| `GET` | `/api/prs/predictions` | Race predictions with backtested error |
+
+**Garmin and sync**
+
+| Method | Path | Returns |
+|---|---|---|
+| `GET` | `/api/garmin/days?days=7–365` | Daily wellness data |
+| `GET` | `/api/garmin/recovery?days=7–365` | Resting-HR baseline, bedtime consistency, next-morning response, readiness |
 | `POST` | `/api/garmin/sync[?days=N]` | Pull from Garmin's Personal API (resumable full history on first sync) |
-| `GET` | `/api/auth/strava` · `/api/auth/status` | Strava OAuth and connection status |
+| `GET` | `/api/sync/status` | Latest Strava and Garmin runs, outstanding enrichment, schedule |
+
+**Auth** (called by the web app's sign-in routes, never by the browser)
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/auth/strava/authorize-url?state=` | Builds Strava's consent URL for the given `state` |
+| `POST` | `/api/auth/strava/exchange` | Exchanges the code, checks the athlete allowlist and scope, stores tokens |
+| `GET` | `/api/auth/status` | Connection status, including `needsReconnect` |
+| `DELETE` | `/api/auth/strava` | Disconnect: deletes the athlete and all their data |
+
+**Research and health**
+
+| Method | Path | Returns |
+|---|---|---|
+| `GET` | `/api/research/dataset` | Full-history export for `research/` (503 `METRICS_PENDING` while metrics are still computing) |
+| `GET` | `/health/live` · `/health/ready` (alias `/health`) | Liveness, and readiness (DB + migrations). Public, no key; see [OBSERVABILITY.md](OBSERVABILITY.md#health-checks) |
+
+**Web app routes** (`apps/web`, same origin as the pages)
+
+| Path | Does |
+|---|---|
+| `/api/auth/strava` → `/api/auth/strava/callback` | Sign in with Strava (sets the `state` cookie, then the session) |
+| `POST /api/auth/logout` | Sign out |
+| `/api/health` · `/api/health/live` | End-to-end health (web + API), and web-only liveness. Public |
+| `/api/*` (everything else) | Session-checked proxy to the API |
+| `/monitoring` | Sentry tunnel for browser error reports |

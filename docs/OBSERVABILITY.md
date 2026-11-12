@@ -52,6 +52,7 @@ plus connection-string passwords and `Bearer …` values inside strings.
 | `app.start_failed`, `app.crashed`, `app.unhandled_rejection` | error | The process failed to start, or hit an uncaught error |
 | `security.*` | warn | Missing secrets (dev only), foreign user rows, tokens encrypted |
 | `proxy.failed`, `auth.start_failed`, `auth.exchange_failed`, `health.api_unreachable` | error / warn | Web app (service `web`) |
+| `web.load_failed` | warn | Web app: a page's API read failed (`path`, `status`), so that section shows an error state |
 
 ### Useful Railway log filters
 

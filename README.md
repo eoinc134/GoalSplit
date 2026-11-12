@@ -1,5 +1,7 @@
 # GoalSplit
 
+[![CI](https://github.com/eoinc134/GoalSplit/actions/workflows/ci.yml/badge.svg)](https://github.com/eoinc134/GoalSplit/actions/workflows/ci.yml)
+
 A training analytics project built on my own running data: two-plus years of Strava
 activities with second-by-second heart rate, pace and elevation, plus daily Garmin
 recovery data. It applies established endurance-science models to answer practical
@@ -88,15 +90,50 @@ confounders explicitly:
 - **Data quality:** every view reports how much of the data actually had HR streams, so
   a gap in the data isn't mistaken for a change in fitness.
 
-## Data pipeline
+## Architecture
 
-Activities sync from the Strava API and Garmin metrics from Garmin Connect. Raw payloads
-are stored unchanged. Each activity's streams are reduced once to an HR histogram and
-quarter splits, and all analysis runs on those summaries. The training log is also
-exposed to Claude through an MCP server, for AI-assisted coaching conversations.
+```mermaid
+flowchart LR
+    browser(["Browser"]) -->|"pages, /api/*<br/>session cookie"| web
+    subgraph railway["Railway"]
+        web["<b>Web</b> · Next.js<br/>sign-in, session check,<br/>server-side API proxy"]
+        api["<b>API</b> · Express<br/>analytics, sync pipeline,<br/>scheduler, migrations"]
+        db[("PostgreSQL")]
+        web -->|"API key"| api
+        api --> db
+    end
+    api -->|"OAuth, activities,<br/>streams"| strava(["Strava API"])
+    api -->|"Personal API key"| garmin(["Garmin Personal API"])
+    mcp["MCP server<br/>(Claude Desktop)"] -->|"API key"| api
+    research["research/ · Python<br/>on a local snapshot"] -.->|"snapshot copy"| db
+    web & api -.-> sentry(["Sentry"])
+    uptime(["UptimeRobot"]) -.->|"/api/health"| web
+```
 
-Built with Next.js, Express, PostgreSQL and TypeScript. To run it, deploy it or set up
-syncing, see **[docs/SETUP.md](docs/SETUP.md)**.
+- **Web** (`apps/web`) is the only public door. Every page and `/api/*` call needs a
+  session from **Sign in with Strava**, and browser API calls go through a same-origin
+  proxy that adds the API key on the server.
+- **API** (`apps/api`) owns the data. It syncs Strava and Garmin (on demand and every 6
+  hours), stores raw payloads unchanged, reduces each activity's streams once to an HR
+  histogram and quarter splits, and serves the analytics. Schema changes are numbered SQL
+  migrations, applied on startup.
+- **Shared types** (`packages/types`) define every API response, so the API and the web
+  app can't disagree about a shape.
+- **MCP server** (`apps/mcp-trainer`) exposes the training log to Claude for
+  AI-assisted coaching conversations.
+- **Research** (`research/`) runs Python against a read-only local snapshot of
+  production, and never touches the live database.
+
+Built with Next.js, Express, PostgreSQL and TypeScript, plus Python for research.
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [docs/SETUP.md](docs/SETUP.md) | Running locally, Strava and Garmin setup, environment variables, security, sync pipeline, database migrations, deploying, API endpoints, troubleshooting |
+| [docs/METHODS.md](docs/METHODS.md) | Every metric's definition, formula, assumptions and references |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Logs, Sentry, health checks, uptime monitoring, debugging a failure |
+| [research/README.md](research/README.md) | Research workflow: snapshot, notebooks, checks, proposals and findings |
 
 ## Research
 
@@ -126,10 +163,11 @@ written proposal:
   ramp, intensity distribution, long-run progression and efficiency change. Which kind
   of block led to the best race? The detected training phases are a natural starting
   point for defining blocks.
-- **Recovery ↔ load modelling:** relate resting HR, sleep and stress (Garmin) to form
-  and the previous days' load. For example, does a raised resting HR the morning after
-  a big day predict worse efficiency or more decoupling? Includes lagged correlations
-  against a personal baseline. (HRV isn't available on the current watch.)
+- **Recovery → performance modelling:** the Recovery page already shows how the next
+  morning responds to a hard day. The next step runs the other way: does a raised resting
+  HR, short sleep or high stress predict worse efficiency or more decoupling on the next
+  run? Lagged correlations against a personal baseline. (HRV isn't available on the
+  current watch.)
 - **Weather context:** historical temperature and humidity for each run's time and
   place, replacing the watch's skin-warmed temperature sensor in the heat adjustment.
 - **Critical speed:** critical speed and D′ fitted to best efforts across durations,

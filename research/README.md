@@ -71,10 +71,13 @@ research/
 ```sh
 # 1. Snapshot production into a local Postgres 18 (port 5434). Read-only on
 #    Railway, and strava_tokens rows are skipped. Re-run any time to refresh.
+#    Needs .env.railway in the repo root (copy .env.railway.example) holding
+#    Railway's *public* Postgres connection string.
 powershell -ExecutionPolicy Bypass -File scripts\research-snapshot.ps1
 
-# 2. Run the API against the snapshot on port 3002 (leaves :3001 free for dev).
-#    PowerShell: $env:PORT=3002; $env:DATABASE_URL="postgresql://goalsplit:<password>@localhost:5434/goalsplit_snapshot"
+# 2. Run the API against the snapshot on port 3002 (leaves :3001 free for dev),
+#    with automatic sync off: the snapshot is a fixed copy, never synced.
+#    PowerShell: $env:PORT=3002; $env:SYNC_INTERVAL_MINUTES=0; $env:DATABASE_URL="postgresql://goalsplit:<password>@localhost:5434/goalsplit_snapshot"
 cd apps/api; npx tsx src/index.ts
 
 # 3. Python environment
@@ -135,6 +138,25 @@ pytest && python check_notebooks.py
 
 Keep `ruff`'s version in `requirements-dev.txt` and `rev:` in `../.pre-commit-config.yaml`
 the same.
+
+## Running the Proposal 3 follow-up
+
+The study window ends on **7 Feb 2027**. Notebook 03 works at any time: mid-study it
+reports adherence so far and withholds the outcomes, and after the window it runs the
+pre-registered comparison against `baselines/2026-11-07.json`. After the window:
+
+1. Refresh the snapshot (Setup step 1), and start the API against it (step 2).
+2. Execute the notebook. It reads the frozen baseline and never refits it:
+   ```sh
+   jupyter nbconvert --to notebook --execute --inplace notebooks\03-before-after.ipynb
+   python check_notebooks.py
+   ```
+3. Write `findings/03-plan-before-after.md`, following the outcomes and analysis plan in
+   [proposal 3](proposals/03-plan-before-after.md), then update the status in the table
+   above and in the top-level README.
+
+Don't re-run `freeze_baseline.py`. It refuses to overwrite a baseline, because a
+pre-registered baseline that can be regenerated isn't frozen.
 
 ## Ground rules
 
