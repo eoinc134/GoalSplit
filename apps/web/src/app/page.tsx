@@ -1,89 +1,113 @@
-import { StatCard } from "@/components/stat-card";
 import { TeaserCard } from "@/components/teaser-card";
 import { BandBadge } from "@/components/band-badge";
 import { StravaConnect } from "@/components/strava-connect";
-import { SyncStatusPanel } from "@/components/sync-status";
-import { ActivityList } from "@/components/activity-list";
-import { LoadErrorBanner } from "@/components/states";
-import { failures, load } from "@/lib/server-api";
+import { PlanCard } from "@/components/plan-card";
+import { CoachNote } from "@/components/coach-note";
+import { LoadErrorBanner, Loadable } from "@/components/states";
+import { failures, load, type LoadError } from "@/lib/server-api";
 import { latestValue } from "@/lib/garmin";
-import { GARMIN_FALLBACK, LOAD_FALLBACK, PRS_FALLBACK, STATS_FALLBACK } from "@/lib/fallbacks";
-import { formatTime, formatDate } from "@/lib/format";
-import type { DashboardStats, TrainingLoadSummary, GarminDaysResponse, PersonalRecords, PrRecord } from "@goalsplit/types";
+import { GARMIN_FALLBACK } from "@/lib/fallbacks";
+import { formatDate } from "@/lib/format";
+import type { GarminDaysResponse, PlanAdherence, WeeklyNote, WeeklyReview } from "@goalsplit/types";
 
 const UNAVAILABLE = "Couldn't load";
 
-function latestPr(records: PrRecord[]): PrRecord | null {
-  if (records.length === 0) return null;
-  return records.reduce((latest, r) => (r.achievedDate > latest.achievedDate ? r : latest), records[0]);
+function Section({
+  title,
+  note,
+  error = null,
+  children,
+}: Readonly<{ title: string; note?: React.ReactNode; error?: LoadError | null; children: React.ReactNode }>) {
+  return (
+    <section className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+      <h2 className="text-base font-semibold">{title}</h2>
+      {note && !error && <p className="mt-1 text-xs text-neutral-500">{note}</p>}
+      <div className="mt-4">
+        <Loadable error={error} size="sm">
+          {children}
+        </Loadable>
+      </div>
+    </section>
+  );
+}
+
+function km(metres: number): string {
+  return `${(metres / 1000).toFixed(1)} km`;
+}
+
+function weekKmSubtext(review: WeeklyReview | null): string {
+  const [last, current] = (review?.weekly ?? []).slice(-2);
+  if (!current) return "No data yet";
+  const sofar = `${current.daysElapsed} of 7 days`;
+  return last ? `${sofar} · last week ${km(last.training.runDistanceM)}` : sofar;
 }
 
 export default async function DashboardPage() {
-  const [statsLoad, trainingLoad, garminLoad, prsLoad] = await Promise.all([
-    load<DashboardStats>("/dashboard/stats", STATS_FALLBACK),
-    load<TrainingLoadSummary>("/training/load?days=28", LOAD_FALLBACK),
+  const [reviewLoad, garminLoad, planLoad, notesLoad] = await Promise.all([
+    load<WeeklyReview | null>("/training/weekly-review?weeks=2&format=json", null),
     load<GarminDaysResponse>("/garmin/days?days=14", GARMIN_FALLBACK),
-    load<PersonalRecords>("/prs", PRS_FALLBACK),
+    load<PlanAdherence | null>("/plan/adherence", null),
+    load<WeeklyNote[]>("/plan/notes?limit=1", []),
   ]);
-  const stats = statsLoad.data;
-  const training = trainingLoad.data;
+  const review = reviewLoad.data;
+  const thisWeek = review?.weekly.at(-1);
   const restingHr = latestValue(garminLoad.data.days, "restingHeartRate");
-  const topPr = latestPr(prsLoad.data.records);
-  // A failed read shows "—" and says so, never a misleading 0.
-  const stat = (value: string) => (statsLoad.error ? "—" : value);
+
+  let ctlSubtext: React.ReactNode = "Keep syncing for a reading";
+  if (reviewLoad.error) ctlSubtext = UNAVAILABLE;
+  else if (review?.current.band) ctlSubtext = <BandBadge band={review.current.band} />;
+
+  let rhrSubtext = "Sync Garmin to unlock";
+  if (garminLoad.error) rhrSubtext = UNAVAILABLE;
+  else if (restingHr) rhrSubtext = `via Garmin · ${formatDate(restingHr.day)}`;
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-neutral-400">Your training overview</p>
+        <p className="mt-1 text-neutral-400">This week, the training plan, and Claude&rsquo;s latest review</p>
       </div>
 
-      <LoadErrorBanner errors={failures(statsLoad, trainingLoad, garminLoad, prsLoad)} />
+      <StravaConnect onlyWhenActionNeeded />
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <StatCard label="Total Runs" value={stat(String(stats.totalRuns))} subtext={statsLoad.error ? UNAVAILABLE : undefined} />
-        <StatCard label="Total Distance" value={stat(`${stats.totalDistance} km`)} />
-        <StatCard label="This Week" value={stat(`${stats.weeklyDistance} km`)} />
+      <LoadErrorBanner errors={failures(reviewLoad, garminLoad, planLoad, notesLoad)} />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <TeaserCard
+          href="/training"
+          label="This week"
+          value={reviewLoad.error || !thisWeek ? "—" : km(thisWeek.training.runDistanceM)}
+          subtext={reviewLoad.error ? UNAVAILABLE : weekKmSubtext(review)}
+        />
+        <TeaserCard
+          href="/training"
+          label="Fitness (CTL)"
+          value={review && !reviewLoad.error ? review.current.ctl.toFixed(0) : "—"}
+          subtext={ctlSubtext}
+        />
+        <TeaserCard
+          href="/recovery"
+          label="Resting HR"
+          value={restingHr ? `${restingHr.value} bpm` : "—"}
+          subtext={rhrSubtext}
+        />
       </div>
 
-      {/* Analytics teasers — headline from Training, Recovery, and Records */}
-      <div>
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500">Analytics</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <TeaserCard
-            href="/training"
-            label="Fitness (CTL)"
-            value={training.asOf ? training.current.ctl.toFixed(0) : "—"}
-            subtext={
-              trainingLoad.error
-                ? UNAVAILABLE
-                : training.current.band
-                  ? <BandBadge band={training.current.band} />
-                  : "Keep syncing for a reading"
-            }
-          />
-          <TeaserCard
-            href="/recovery"
-            label="Resting HR"
-            value={restingHr ? `${restingHr.value} bpm` : "—"}
-            subtext={garminLoad.error ? UNAVAILABLE : restingHr ? `via Garmin · ${formatDate(restingHr.day)}` : "Sync Garmin to unlock"}
-          />
-          <TeaserCard
-            href="/prs"
-            label="Latest PR"
-            value={topPr ? `${topPr.distanceLabel} · ${formatTime(topPr.timeSeconds)}` : "—"}
-            subtext={prsLoad.error ? UNAVAILABLE : topPr ? formatDate(topPr.achievedDate) : "No records yet"}
-          />
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <Section
+            title="Training plan"
+            error={planLoad.error}
+            note="Progress against the study's pre-registered criteria. The study's verdict comes from the research follow-up."
+          >
+            <PlanCard adherence={planLoad.data} />
+          </Section>
         </div>
-      </div>
-
-      {/* Strava section */}
-      <div className="space-y-4">
-        <StravaConnect />
-        <SyncStatusPanel />
-        <ActivityList />
+        <div className="lg:col-span-2">
+          <Section title="Weekly review" error={notesLoad.error} note="Written by Claude from the Training, Recovery and plan data.">
+            <CoachNote note={notesLoad.data[0] ?? null} />
+          </Section>
+        </div>
       </div>
     </div>
   );

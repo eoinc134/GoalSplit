@@ -87,7 +87,9 @@ and update `GARMIN_API`. Resting HR from days the watch was barely worn is disca
 |---|---|---|
 | Tool | `get_recent_training_data` | Per-activity training log (`/api/activities/export`) |
 | Tool | `get_weekly_review` | Week-by-week digest of the Training and Recovery pages (`/api/training/weekly-review`): load/form, intensity, EF, long runs, Garmin recovery, data-quality caveats |
-| Prompt | `weekly_review` | Asks Claude to write weekly coaching feedback from both tools; optional `focus` argument |
+| Tool | `get_plan_adherence` | Training-plan study progress (`/api/plan/adherence`) |
+| Tool | `save_weekly_note` | Saves a markdown review for a week (`PUT /api/plan/notes/:weekStart`); shown on the dashboard |
+| Prompt | `weekly_review` | Reviews the last complete week (plan check, load, recovery) without prescribing sessions, then saves it with `save_weekly_note`; optional `focus` argument |
 
 Build it with `npm run build --workspace=@goalsplit/mcp-trainer`, then add:
 
@@ -343,7 +345,6 @@ All `/api` routes need the API key (`x-api-key` or `Authorization: Bearer`) when
 | `/api/training/efficiency?days=28–730` | Per-run EF, rolling median, Z2 pace, temperature model, change points |
 | `/api/training/long-runs?days=28–1095` | Long-run drift/fade/HR rise, durability bins |
 | `/api/training/weekly-review?weeks=1–12&format=markdown\|json` | Weekly training + recovery digest, used by the MCP server (markdown by default) |
-| `/api/dashboard/stats` | Run count, total and this-week distance |
 
 **Activities and records**
 
@@ -356,6 +357,14 @@ All `/api` routes need the API key (`x-api-key` or `Authorization: Bearer`) when
 | `GET` | `/api/prs` | Personal records (Strava best efforts + manual entries) |
 | `POST` / `DELETE` | `/api/prs` · `/api/prs/:id` | Add / remove a manual record |
 | `GET` | `/api/prs/predictions` | Race predictions with backtested error |
+
+**Training plan (research Proposal 3)**
+
+| Method | Path | Returns |
+|---|---|---|
+| `GET` | `/api/plan/adherence[?format=markdown]` | Progress against the study's 7 adherence criteria, with a 13-week grid |
+| `GET` | `/api/plan/notes?limit=1–52` | Weekly review notes saved by Claude, newest first |
+| `PUT` | `/api/plan/notes/:weekStart` | Save (replace) the note for a week; `weekStart` is a Monday, body `{ body }` up to 8,000 chars |
 
 **Garmin and sync**
 

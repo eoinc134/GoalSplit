@@ -41,7 +41,7 @@ describe("error envelope", () => {
 
   it("missing API key", async () => {
     vi.stubEnv("API_KEY", "k".repeat(40));
-    const res = await request(app).get("/api/dashboard/stats");
+    const res = await request(app).get("/api/plan/notes");
     isErrorBody(res.body, 401);
     expect(res.body.code).toBe("UNAUTHORIZED");
   });

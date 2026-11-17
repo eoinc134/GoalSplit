@@ -9,7 +9,7 @@ const API_KEY = process.env.GOALSPLIT_API_KEY;
 
 const server = new McpServer({
   name: "goalsplit-trainer",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 // GET a GoalSplit API path and return the body as text (both endpoints used
@@ -26,6 +26,19 @@ async function apiGet(path: string, params: Record<string, string | number | und
     throw new Error(`GoalSplit API request failed: ${res.status} ${await res.text()}`);
   }
   return res.text();
+}
+
+// PUT a JSON body to a GoalSplit API path and return the parsed `data`.
+async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...(API_KEY ? { "x-api-key": API_KEY } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`GoalSplit API request failed: ${res.status} ${await res.text()}`);
+  }
+  return ((await res.json()) as { data: T }).data;
 }
 
 server.registerTool(
@@ -87,33 +100,76 @@ server.registerTool(
   },
 );
 
-const REVIEW_INSTRUCTIONS = `You are acting as this runner's coach. Write their weekly training feedback.
+server.registerTool(
+  "get_plan_adherence",
+  {
+    title: "Get training-plan adherence",
+    description:
+      "Progress against the athlete's 13-week training-plan study (research Proposal 3, 9 Nov 2026 – 7 Feb 2027): " +
+      "the 7 pre-registered 'did I follow the plan?' criteria (no 14+ day break, no collapsed week, 2+ deloads, weekend " +
+      "75+ min runs in 10 of 13 weeks, quality sessions in 9 of 13, 80%+ easy, a 10% build), each with a status " +
+      "(met / on-track / at-risk / missed / pending), plus a week-by-week grid. Tracks the plan; it isn't the plan.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async () => {
+    const markdown = await apiGet("/plan/adherence", { format: "markdown" });
+    return { content: [{ type: "text", text: markdown }] };
+  },
+);
 
-1. Call get_weekly_review (weeks: 4) for the analytics, then get_recent_training_data (days: 7) for the individual sessions and any notes the athlete wrote.
-2. Write the feedback with these sections, kept tight:
-   - **Headline**: one or two sentences on how the week went and where they stand.
+server.registerTool(
+  "save_weekly_note",
+  {
+    title: "Save weekly coaching note",
+    description:
+      "Saves a markdown coaching note for one week to GoalSplit, where it shows on the dashboard. One note per week: " +
+      "saving again for the same week replaces it. Only save when the athlete has asked for a weekly review.",
+    inputSchema: {
+      week_start: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe("Monday (YYYY-MM-DD) of the week the note reviews — normally the last complete week."),
+      markdown: z.string().min(1).max(8000).describe("The note, in markdown. Keep it under ~400 words."),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ week_start, markdown }) => {
+    const note = await apiPut<{ weekStart: string; updatedAt: string }>(`/plan/notes/${week_start}`, { body: markdown });
+    return { content: [{ type: "text", text: `Saved the note for the week of ${note.weekStart} (${note.updatedAt}).` }] };
+  },
+);
+
+const REVIEW_INSTRUCTIONS = `You are reviewing this runner's training week. They are partway through a pre-registered 13-week training-plan study (9 Nov 2026 – 7 Feb 2027), so your job is to describe and check, not to coach: don't prescribe sessions or change the plan, because that would change what the study is testing.
+
+1. Call get_weekly_review (weeks: 4), get_plan_adherence, and get_recent_training_data (days: 7) for the individual sessions and any notes the athlete wrote.
+2. Review the last complete week (Monday–Sunday) with these sections, kept tight (under ~400 words):
+   - **Headline**: one or two sentences on how the week went.
+   - **Plan check**: the adherence criteria that moved this week, anything at risk or missed, and what the plan's own rules need from the coming weeks (e.g. "a weekend 75+ min run is needed every remaining week"). State requirements; don't design sessions.
    - **Load & form**: weekly TRIMP vs recent weeks, CTL ramp, TSB and ACWR band, monotony.
-   - **Intensity balance**: low/moderate/high split and whether it suits easy-base vs. quality work.
+   - **Intensity**: the low/moderate/high split.
    - **Aerobic efficiency**: EF, Z2 pace, long-run decoupling/fade. Treat these as trends, not single-week verdicts.
-   - **Recovery**: resting HR vs baseline (flag any elevated mornings), sleep amount and timing, Body Battery, readiness.
-   - **Flags**: anything that needs attention (load spikes, high monotony, recovery markers moving the wrong way). Say "none" if nothing does.
-   - **Next week**: 2–3 concrete, specific suggestions (sessions, volume, recovery habits).
+   - **Recovery**: resting HR vs baseline (flag elevated mornings), sleep amount and timing, Body Battery, readiness.
+   - **What to watch**: signals worth keeping an eye on next week. Say "nothing notable" if there are none.
 3. Rules:
    - Cite the actual numbers. Compare against the athlete's own history and baselines, not population norms.
    - Respect the data-quality caveats. Don't judge the current partial week's totals as a full week.
    - Don't invent metrics the data doesn't contain (there is no HRV or temperature data).
-   - Where training and recovery signals disagree, say so and explain which you'd weight more and why.`;
+   - Where training and recovery signals disagree, say so.
+   - When comparing a race or effort with a target, compare pace per km (recorded distances often differ from the nominal one) and check the arithmetic.
+   - If a recovery signal looks like illness or injury, say so plainly: health comes before the study.
+4. Show the review to the athlete, then save it with save_weekly_note (week_start = that week's Monday) so it appears on their dashboard.`;
 
 server.registerPrompt(
   "weekly_review",
   {
     title: "Weekly training review",
-    description: "Coaching feedback on the last week of training and recovery, from GoalSplit's analytics.",
+    description: "Review of the last complete week: plan adherence, training load and recovery, saved to the dashboard.",
     argsSchema: {
       focus: z
         .string()
         .optional()
-        .describe("Optional emphasis, e.g. 'half marathon in 6 weeks', 'recovery', 'building base'."),
+        .describe("Optional emphasis, e.g. 'recovery', 'the long runs', 'the 10K race'."),
     },
   },
   ({ focus }) => ({

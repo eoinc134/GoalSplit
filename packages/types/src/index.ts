@@ -91,13 +91,6 @@ export interface SyncStatusResponse {
   schedule: { intervalMinutes: number; nextRunAt: string | null };
 }
 
-// GET /api/dashboard/stats — runs only, distances in km.
-export interface DashboardStats {
-  totalRuns: number;
-  totalDistance: number;
-  weeklyDistance: number; // since Monday
-}
-
 // ── API envelope ────────────────────────────────────────────────────────────
 // Every JSON endpoint answers with one of these shapes (see
 // apps/api/src/lib/api-errors.ts). The web client unwraps `data`.
@@ -686,4 +679,63 @@ export interface WeeklyReview {
     garminLatestDay: string | null;
     lastActivityDate: string | null; // newest activity across all history
   };
+}
+
+// ── Training-plan study (research Proposal 3) ───────────────────────────────
+// Progress against the pre-registered "did I follow the plan?" criteria
+// (research/proposals/03-plan-before-after.md, scored in
+// research/goalsplit_research/study.py). The app shows progress mid-study;
+// the study's own verdict comes from the Python follow-up.
+
+export type PlanCriterionKey = "no_break" | "no_collapse" | "deloads" | "long_runs" | "quality" | "easy" | "build";
+
+// met: already satisfied for good (or satisfied at the end of the study)
+// on-track: currently satisfied, or still reachable with room to spare
+// at-risk: still reachable, but only just
+// missed: can no longer be satisfied
+// pending: not measurable yet (e.g. build needs week 9)
+export type PlanCriterionStatus = "met" | "on-track" | "at-risk" | "missed" | "pending";
+
+export interface PlanCriterion {
+  key: PlanCriterionKey;
+  label: string;
+  value: number | null; // the current count / share / ratio
+  target: number;
+  status: PlanCriterionStatus;
+  detail: string; // e.g. "2 of 10 needed, 11 weeks left"
+}
+
+export interface PlanWeek {
+  weekStart: string;
+  weekNumber: number; // 1–13
+  state: "complete" | "current" | "future";
+  km: number;
+  load: number; // TRIMP
+  kmVsTrailing: number | null; // km ÷ mean of the previous 3 weeks; null when they were empty
+  kind: "deload" | "collapse" | "normal" | null; // null for current/future weeks or no ratio
+  weekendLongRun: boolean;
+  quality: boolean;
+  lowPct: number | null; // share of HR time in Z1–2
+}
+
+export interface PlanAdherence {
+  study: { start: string; end: string; weeks: number; proposalUrl: string };
+  asOf: string;
+  weekNumber: number | null; // current study week (1–13); null before the start or after the end
+  status: "not-started" | "in-progress" | "finished";
+  criteria: PlanCriterion[];
+  metOrOnTrack: number; // criteria currently met or on track
+  requiredMin: number; // 6 of 7, with no_break required
+  onTrack: boolean; // no_break not missed and metOrOnTrack ≥ requiredMin
+  currentGapDays: number; // days since the last activity of any type
+  weeks: PlanWeek[];
+}
+
+// A coaching note Claude saved for a week through the MCP `save_weekly_note` tool.
+export interface WeeklyNote {
+  weekStart: string; // the week the note reviews (local Monday)
+  body: string; // markdown
+  source: string;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -114,6 +114,14 @@ python check_notebooks.py
 ```
 
 Executing needs the local dataset (`research/data/`), so it can't run in CI.
+
+**Dashboard plan adherence.** The dashboard's Proposal 3 progress card is a TypeScript port of
+`study.py`'s adherence criteria (`apps/api/src/lib/plan-adherence.ts`). After changing either
+side, check they still agree on every complete study week, against a running API:
+
+```sh
+python check_adherence_parity.py   # GOALSPLIT_API_URL selects the API (default: research API, port 3002)
+```
 `check_notebooks.py` checks what it can instead:
 
 - every `.ipynb` is exactly what its builder produces (catches hand edits in Jupyter,

@@ -2,7 +2,9 @@ import type { SyncStatus } from "@goalsplit/types";
 import { load } from "@/lib/server-api";
 import { NOT_CONNECTED } from "@/lib/fallbacks";
 
-export async function StravaConnect() {
+// `onlyWhenActionNeeded`: render nothing while connected and healthy (the
+// dashboard only needs it to prompt a first connect or a reconnect).
+export async function StravaConnect({ onlyWhenActionNeeded = false }: Readonly<{ onlyWhenActionNeeded?: boolean }> = {}) {
   const { data: status, error } = await load<SyncStatus>("/auth/status", NOT_CONNECTED);
   // Unknown is not "not connected": don't offer a Connect button on a failed check.
   if (error) {
@@ -13,6 +15,7 @@ export async function StravaConnect() {
     );
   }
   const needsReconnect = status.isConnected && status.needsReconnect;
+  if (onlyWhenActionNeeded && status.isConnected && !needsReconnect) return null;
 
   return (
     <div

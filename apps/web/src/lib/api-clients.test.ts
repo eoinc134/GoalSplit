@@ -65,7 +65,7 @@ describe("browser api client", () => {
 describe("server load()", () => {
   it("returns the data and no error on success", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(200, { data: { totalRuns: 4 } })));
-    expect(await load("/dashboard/stats", { totalRuns: 0 })).toEqual({ data: { totalRuns: 4 }, error: null });
+    expect(await load("/plan/notes", { totalRuns: 0 })).toEqual({ data: { totalRuns: 4 }, error: null });
   });
 
   it("returns the fallback plus the API's message when it fails", async () => {

@@ -1,6 +1,5 @@
 import type {
   AthletePhysiology,
-  DashboardStats,
   GarminDaysResponse,
   PersonalRecords,
   RacePredictionSummary,
@@ -101,8 +100,6 @@ export const EFFICIENCY_FALLBACK: EfficiencySummary = {
 };
 
 export const LONG_RUNS_FALLBACK: LongRunSummary = { windowDays: 365, definition: "", runs: [], durability: [] };
-
-export const STATS_FALLBACK: DashboardStats = { totalRuns: 0, totalDistance: 0, weeklyDistance: 0 };
 
 export const PRS_FALLBACK: PersonalRecords = { records: [], manualEntries: [] };
 
