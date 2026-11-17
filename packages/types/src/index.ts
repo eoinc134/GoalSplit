@@ -618,3 +618,72 @@ export interface RecoverySummary {
 export interface GarminSyncResult {
   synced: number;
 }
+
+// ── Weekly review ────────────────────────────────────────────────────────────
+// A condensed, week-by-week view of the Training and Recovery pages, built for
+// Claude (apps/mcp-trainer `get_weekly_review`) to write coaching feedback from.
+// Every figure comes from the same builders the pages use.
+
+export interface WeeklyReviewLongRun {
+  activityName: string;
+  localDate: string;
+  movingTimeS: number;
+  distanceM: number;
+  decouplingPct: number | null;
+  paceFadePct: number | null;
+}
+
+export interface WeeklyReviewTraining {
+  runCount: number;
+  runDistanceM: number;
+  activityCount: number; // every type
+  movingTimeS: number; // every type
+  load: number; // Banister TRIMP, summed
+  monotony: number | null;
+  strain: number | null;
+  lowPct: number | null; // share of HR time in Z1+Z2
+  moderatePct: number | null; // Z3
+  highPct: number | null; // Z4+Z5
+  polarizationIndex: number | null;
+  medianEf: number | null; // aerobic runs ≥20 min
+  z2PaceSecPerKm: number | null; // GAP pace while HR sat in Z2
+  longRun: WeeklyReviewLongRun | null; // the week's longest qualifying long run
+}
+
+export interface WeeklyReviewRecovery {
+  daysWithData: number; // Garmin days with any wellness reading
+  restingHrMean: number | null;
+  restingHrDeviationMean: number | null; // bpm vs the rolling 28-day baseline
+  elevatedRestingHrDays: number; // > 2 SD and ≥ 3 bpm above baseline
+  sleepHoursMean: number | null;
+  bedtimeSdMinutes: number | null; // null under 3 nights with timing
+  bodyBatteryHighMean: number | null;
+  restStressPct: number | null; // share of monitored time Garmin classed as rest
+}
+
+export interface WeeklyReviewWeek {
+  weekStart: string; // local Monday
+  isPartialWeek: boolean;
+  daysElapsed: number; // 7, or days so far in the current week
+  training: WeeklyReviewTraining;
+  recovery: WeeklyReviewRecovery;
+}
+
+export interface WeeklyReview {
+  asOf: string; // YYYY-MM-DD, local
+  weeks: number;
+  current: TrainingLoadSummary["current"];
+  phase: ChangePointSegment | null; // the current training phase (weekly-load level)
+  weekly: WeeklyReviewWeek[]; // oldest first; the last entry is the current (partial) week
+  readiness: Readiness | null;
+  bedtime: BedtimeConsistency | null; // last 28 nights
+  efficiency: { recentMedianEf: number | null; priorMedianEf: number | null; efChangePct: number | null };
+  physiology: Pick<AthletePhysiology, "hrMax" | "hrRest" | "hrRestSource" | "zoneModel">;
+  dataQuality: {
+    insufficientHistory: boolean; // under 42 days — CTL still warming up
+    hrCoveragePct7d: number | null; // activities with HR, last 7 days
+    streamsCoveragePct: number | null; // activities in the window with stream metrics
+    garminLatestDay: string | null;
+    lastActivityDate: string | null; // newest activity across all history
+  };
+}

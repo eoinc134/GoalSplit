@@ -81,8 +81,15 @@ and update `GARMIN_API`. Resting HR from days the watch was barely worn is disca
 
 ## Claude via MCP
 
-`apps/mcp-trainer` exposes a `get_recent_training_data` tool, so Claude Desktop can pull
-the recent training log. Build it with `npm run build --workspace=@goalsplit/mcp-trainer`, then add:
+`apps/mcp-trainer` gives Claude Desktop:
+
+| Kind | Name | What it does |
+|---|---|---|
+| Tool | `get_recent_training_data` | Per-activity training log (`/api/activities/export`) |
+| Tool | `get_weekly_review` | Week-by-week digest of the Training and Recovery pages (`/api/training/weekly-review`): load/form, intensity, EF, long runs, Garmin recovery, data-quality caveats |
+| Prompt | `weekly_review` | Asks Claude to write weekly coaching feedback from both tools; optional `focus` argument |
+
+Build it with `npm run build --workspace=@goalsplit/mcp-trainer`, then add:
 
 ```json
 {
@@ -335,6 +342,7 @@ All `/api` routes need the API key (`x-api-key` or `Authorization: Bearer`) when
 | `/api/training/hr-drift?days=7–365&limit=1–50` | Aerobic decoupling per run |
 | `/api/training/efficiency?days=28–730` | Per-run EF, rolling median, Z2 pace, temperature model, change points |
 | `/api/training/long-runs?days=28–1095` | Long-run drift/fade/HR rise, durability bins |
+| `/api/training/weekly-review?weeks=1–12&format=markdown\|json` | Weekly training + recovery digest, used by the MCP server (markdown by default) |
 | `/api/dashboard/stats` | Run count, total and this-week distance |
 
 **Activities and records**

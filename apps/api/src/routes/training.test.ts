@@ -195,3 +195,44 @@ describe("GET /api/training/long-runs", () => {
     expect(res.body.data.durability).toHaveLength(4);
   });
 });
+
+describe("GET /api/training/weekly-review", () => {
+  it("explains that no athlete is connected when no user exists", async () => {
+    mockUserId.mockResolvedValue(null);
+    const res = await request(app).get("/api/training/weekly-review");
+    expect(res.status).toBe(200);
+    expect(res.type).toBe("text/markdown");
+    expect(res.text).toContain("No athlete connected yet");
+    expect(mockLoad).not.toHaveBeenCalled();
+  });
+
+  it("returns calendar weeks of training and recovery as JSON", async () => {
+    withActivities([activity({ movingTimeS: 100 * 60 }), activity({ id: "act-2", localDate: "2026-09-01" })]);
+    mockSql.mockResolvedValue([]); // no Garmin days
+    const res = await request(app).get("/api/training/weekly-review?weeks=3&format=json");
+
+    expect(res.status).toBe(200);
+    const review = res.body.data;
+    expect(review.weeks).toBe(3);
+    expect(review.weekly.map((w: { weekStart: string }) => w.weekStart)).toEqual(["2026-08-24", "2026-08-31", "2026-09-07"]);
+    expect(review.weekly[2]).toMatchObject({ isPartialWeek: true, daysElapsed: 3 });
+    expect(review.weekly[1].training).toMatchObject({ runCount: 1, runDistanceM: 10_800, lowPct: 100 });
+    expect(review.weekly[1].training.load).toBeGreaterThan(0);
+    expect(review.weekly[2].training.longRun).toMatchObject({ localDate: TODAY, movingTimeS: 6000 });
+    expect(review.weekly[2].recovery.daysWithData).toBe(0);
+    expect(review.dataQuality.garminLatestDay).toBeNull();
+    expect(review.readiness).toBeNull();
+    expect(mockLoad).toHaveBeenCalledWith("user-1");
+  });
+
+  it("renders markdown by default and clamps weeks to 1-12", async () => {
+    withActivities([activity()]);
+    mockSql.mockResolvedValue([]);
+    const res = await request(app).get("/api/training/weekly-review?weeks=99");
+    expect(res.type).toBe("text/markdown");
+    expect(res.text).toContain("# Weekly training review, as of 2026-09-09");
+    expect(res.text).toContain("12 calendar weeks");
+    expect(res.text).toContain("## Training by week");
+    expect(res.text).toContain("There's no Garmin data");
+  });
+});

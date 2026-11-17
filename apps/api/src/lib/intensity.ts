@@ -1,5 +1,7 @@
 import type { HrZoneBoundary, HrZoneMinutes, IntensityProfile, WeeklyIntensityPoint } from "@goalsplit/types";
 import type { HrBucket } from "./activity-metrics.js";
+import { weekSpine, type AnalyticsActivity } from "./analytics-activity.js";
+import { addDaysUtc, weekStartOf } from "./dates.js";
 import { zoneForHeartrate } from "./hr-zones.js";
 
 // Below this, a week's distribution is too thin to label.
@@ -55,4 +57,33 @@ export function summarizeIntensity(minutesByZone: HrZoneMinutes[]): Omit<WeeklyI
     polarizationIndex: pi,
     profile,
   };
+}
+
+// The last `weeks` calendar weeks (the current one partial) of 3-zone
+// intensity, oldest first, plus the pooled distribution across them.
+// `activities` must cover the window; anything earlier is ignored.
+export function weeklyIntensity(
+  activities: AnalyticsActivity[],
+  zones: HrZoneBoundary[],
+  todayLocal: string,
+  weeks: number,
+): { weekly: WeeklyIntensityPoint[]; overall: Omit<WeeklyIntensityPoint, "weekStart" | "isPartialWeek">; inWindow: AnalyticsActivity[] } {
+  const currentWeek = weekStartOf(todayLocal);
+  const windowStart = addDaysUtc(currentWeek, -7 * (weeks - 1));
+  const inWindow = activities.filter((a) => a.localDate >= windowStart);
+
+  const byWeek = new Map<string, HrZoneMinutes[]>();
+  for (const a of inWindow) {
+    if (!a.metrics?.hasHr || zones.length === 0) continue;
+    const wk = weekStartOf(a.localDate);
+    byWeek.set(wk, addZoneMinutes(byWeek.get(wk) ?? emptyZoneMinutes(), zoneMinutesFromHistogram(a.metrics.hrHistogram, zones)));
+  }
+
+  const weekly: WeeklyIntensityPoint[] = weekSpine(windowStart, todayLocal).map((weekStart) => ({
+    weekStart,
+    ...summarizeIntensity(byWeek.get(weekStart) ?? emptyZoneMinutes()),
+    isPartialWeek: weekStart === currentWeek,
+  }));
+  const overall = summarizeIntensity([...byWeek.values()].reduce((acc, week) => addZoneMinutes(acc, week), emptyZoneMinutes()));
+  return { weekly, overall, inWindow };
 }

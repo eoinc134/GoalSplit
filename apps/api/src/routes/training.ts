@@ -4,11 +4,9 @@ import { buildTrainingLoadSummary, type LoadInput } from "../lib/training-load.j
 import { activityLoad } from "../lib/trimp.js";
 import { MIN_DECOUPLING_MOVING_TIME_S } from "../lib/hr-zones.js";
 import { decoupling } from "../lib/activity-metrics.js";
-import { addZoneMinutes, emptyZoneMinutes, summarizeIntensity, zoneMinutesFromHistogram } from "../lib/intensity.js";
+import { addZoneMinutes, emptyZoneMinutes, weeklyIntensity, zoneMinutesFromHistogram } from "../lib/intensity.js";
 import { buildEfficiencySummary } from "../lib/efficiency.js";
 import { buildLongRunSummary } from "../lib/long-runs.js";
-import { weekSpine } from "../lib/analytics-activity.js";
-import { addDaysUtc, weekStartOf } from "../lib/dates.js";
 import {
   getPhysiology,
   loadAnalyticsActivities,
@@ -24,9 +22,10 @@ import type {
   DecouplingResult,
   HrDriftSummary,
   IntensitySummary,
-  WeeklyIntensityPoint,
 } from "@goalsplit/types";
 import { getCurrentUserId } from "../services/user.service.js";
+import { getWeeklyReview } from "../services/weekly-review.service.js";
+import { formatWeeklyReviewMarkdown } from "../lib/weekly-review.js";
 
 // Everything here except /trends reads activity_metrics — a compact,
 // grade-adjusted summary of each activity's streams dump (see
@@ -211,32 +210,16 @@ trainingRouter.get("/hr-drift", async (req, res) => {
 
 trainingRouter.get("/intensity", async (req, res) => {
   const weeks = intParam(req.query.weeks, 12, 4, 52);
-  // Over-fetch by up to 6 days, then trim to whole calendar weeks once the
-  // database's "today" is known.
+  // Over-fetch by up to 6 days; weeklyIntensity trims to whole calendar weeks
+  // once the database's "today" is known.
   const { physiology, loaded } = await loadForUser(weeks * 7 + 6);
-  const { zones } = physiology;
-  const currentWeek = weekStartOf(loaded.today);
-  const windowStart = addDaysUtc(currentWeek, -7 * (weeks - 1));
-  const inWindow = loaded.activities.filter((a) => a.localDate >= windowStart);
-
-  const byWeek = new Map<string, HrZoneMinutes[]>();
-  for (const a of inWindow) {
-    if (!a.metrics?.hasHr || zones.length === 0) continue;
-    const wk = weekStartOf(a.localDate);
-    byWeek.set(wk, addZoneMinutes(byWeek.get(wk) ?? emptyZoneMinutes(), zoneMinutesFromHistogram(a.metrics.hrHistogram, zones)));
-  }
-
-  const weekly: WeeklyIntensityPoint[] = weekSpine(windowStart, loaded.today).map((weekStart) => ({
-    weekStart,
-    ...summarizeIntensity(byWeek.get(weekStart) ?? emptyZoneMinutes()),
-    isPartialWeek: weekStart === currentWeek,
-  }));
+  const { weekly, overall, inWindow } = weeklyIntensity(loaded.activities, physiology.zones, loaded.today, weeks);
 
   const summary: IntensitySummary = {
     weeks,
     zoneModel: physiology.zoneModel,
     weekly,
-    overall: summarizeIntensity([...byWeek.values()].reduce((acc, week) => addZoneMinutes(acc, week), emptyZoneMinutes())),
+    overall,
     streamsCoveragePct: streamsCoveragePct(inWindow),
   };
   return res.json({ data: summary });
@@ -261,4 +244,20 @@ trainingRouter.get("/long-runs", async (req, res) => {
   const days = intParam(req.query.days, 365, 28, 1095);
   const { physiology, loaded } = await loadForUser(days, true);
   return res.json({ data: buildLongRunSummary(loaded.activities, physiology.zones, days) });
+});
+
+// Week-by-week digest of the Training and Recovery pages for Claude (the
+// mcp-trainer `get_weekly_review` tool). Markdown by default; ?format=json
+// returns the WeeklyReview object.
+trainingRouter.get("/weekly-review", async (req, res) => {
+  const weeks = intParam(req.query.weeks, 4, 1, 12);
+  const asJson = req.query.format === "json";
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return asJson
+      ? res.json({ data: null })
+      : res.type("text/markdown").send("# Weekly training review\n\nNo athlete connected yet. Connect Strava in GoalSplit first.\n");
+  }
+  const review = await getWeeklyReview(userId, weeks);
+  return asJson ? res.json({ data: review }) : res.type("text/markdown").send(formatWeeklyReviewMarkdown(review));
 });
